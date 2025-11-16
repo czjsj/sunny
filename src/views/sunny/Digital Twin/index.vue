@@ -116,8 +116,8 @@ import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass';
  * OutlinePass: 轮廓通道，用于为选中物体添加轮廓高亮效果
 **/
 
-// 加载sprite工具类
-import * as requestUtils from "@/utils/threejs/three-sprite-high.js";
+// 加载sprite工具类（精灵）
+import * as requestUtils from "@/utils/threejs/three-sprite-high.js";//引入自定义的three.js精灵工具类
 import navigation from './components/navigation.vue';
 import zsbgm from './components/zsbgm.vue';
 import gzsbgm from './components/gzsbgm.vue';
@@ -169,14 +169,14 @@ let monitorObject = [];  // 摄像头模型的object
 export default {
   name: "Substation",
   components: {
-    navigation,
-    zsbgm,
-    gzsbgm,
-    zbdfh,
-    czt,
-    wlsjtj,
-    hjxx,
-    sbxq
+    navigation,//变电站
+    zsbgm,//主设备规模
+    gzsbgm,//感知设备规模
+    zbdfh,//主变电负荷电流变化
+    czt,//操作台
+    wlsjtj,//物联事件统计
+    hjxx,//环境信息
+    sbxq//设备状态
   },
   data() {
     return {
@@ -435,6 +435,7 @@ export default {
       intersects.forEach(item => 
       {
         if (item.object && item.object.parent && item.object.parent.parent && item.object.parent.parent.name) {
+          //&&逻辑与，多个条件都满足时返回true
           if (item.object.parent.parent.name.indexOf('变压器') > -1) {
             // 处理一下模型选中多次问题
             if (isFind === false)
@@ -944,6 +945,10 @@ export default {
       powerPylonGroup.name = "highVoltageTower";
 
       fbxLoader.load(`/zhangyan-substation/models/高压电塔.FBX`, fbx => {
+        //当fbx这个函数前面只有一个参数时，括号可以省略
+        //fbxloder起到加载模型，fbx这个自定义的名字是表示将加载后的模型传递到这个函数
+        //然后就可以同过fbx来操作这个模型了
+        
         fbx.scale.set(0.0007, 0.0007, 0.0007);
         let powerPylonModel = fbx;
 
@@ -973,7 +978,8 @@ export default {
       let powerPylonGroup = new THREE.Group();
       powerPylonGroup.name = "firstPowerPylonGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/1. 最开始架子.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/1. 最开始架子.FBX`, fbx => 
+      {
         fbx.scale.set(0.0005, 0.0005, 0.0005);
         let powerPylonModel = fbx;
         // 北部
@@ -1079,7 +1085,8 @@ export default {
       let pipesGroup = new THREE.Group();
       pipesGroup.name = "pipesGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/4. 连接柱子旁边设备的管子.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/4. 连接柱子旁边设备的管子.FBX`, fbx => 
+      {
         let pipesModel = fbx;
         let model1 = pipesModel.clone();
         model1.name = '1#管道';
@@ -1101,7 +1108,8 @@ export default {
       let equipmentGroup = new THREE.Group();
       equipmentGroup.name = "equipmentOneAgainstGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/5. 柱子旁边的设备（反）.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/5. 柱子旁边的设备（反）.FBX`, fbx => 
+      {
         fbx.scale.set(0.00055, 0.00055, 0.00055);
         let postsModel = fbx;
 
@@ -1115,7 +1123,15 @@ export default {
         }
 
         // 添加精灵
-        equipmentGroup.children.forEach((item, index) => {
+        //加载设备模型 → 遍历每个设备 → 为每个设备创建指示牌
+                               //↓
+                       // 异步生成纹理
+                               //↓
+                    // 将纹理转为精灵对象
+                              // ↓
+                    // 设置位置/大小并显示
+        equipmentGroup.children.forEach((item, index) => 
+        {
           let model1XOffset = index * 11.8;
           this.createDeviceIndicator({
               img: '/zhangyan-substation/images/tk-blue.png',
@@ -1125,7 +1141,8 @@ export default {
               status: '正常',
               txtPaddingX: 35,
               txtPaddingY: 60
-          }).then((panelMate) => {
+          }).then((panelMate) => 
+          {
             let panelMesh =  new THREE.Sprite(panelMate);
             panelMesh.position.set(-32 + model1XOffset, 8, -22);
             panelMesh.scale.set(6, 4, 1);
@@ -1138,17 +1155,20 @@ export default {
     },
 
     // 创建最开始的柱子（反）
-    addFirstPostsAgainstModel() {
+    addFirstPostsAgainstModel() 
+    {
       let fbxLoader = new FBXLoader();
       // 创建group
       let postsGroup = new THREE.Group();
       postsGroup.name = "postsAgainstGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/3. 柱子.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/3. 柱子.FBX`, fbx => 
+      {
         fbx.scale.set(0.0003, 0.0003, 0.0003);
         let postsModel = fbx;
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; i++) 
+        {
           // 起始位
           let model1XStart = -33.6;
           // 每组的偏移量
@@ -1170,13 +1190,15 @@ export default {
     },
 
     // 创建连接管
-    addLinkPopesModel() {
+    addLinkPopesModel() 
+    {
       let fbxLoader = new FBXLoader();
       // 创建group
       let pipesGroup = new THREE.Group();
       pipesGroup.name = "linkPipesGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/12. 倒数第二个架子下设备的管子.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/12. 倒数第二个架子下设备的管子.FBX`, fbx => 
+      {
         let pipesModel1 = fbx.clone();
         pipesModel1.scale.set(0.000037, 0.00025, 0.00025);
 
@@ -1191,7 +1213,8 @@ export default {
         pipesModel31.scale.set(0.000067, 0.00025, 0.00025);
         pipesModel31.rotation.y = -0.5 * Math.PI;
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; i++) 
+        {
           // 最开始柱子下的管子
           let model1XOffset = i * 12;
           let model1 = pipesModel1.clone();
@@ -1204,7 +1227,8 @@ export default {
           pipesGroup.add(model2);
         }
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; i++) 
+        {
           // 横向的6根管子
           let model3YOffset = i * 1.1;
           let model3 = pipesModel3.clone();
@@ -1225,17 +1249,20 @@ export default {
     },
 
     // 创建变压器桥塔
-    addTransformerPylonModel() {
+    addTransformerPylonModel() 
+    {
       let fbxLoader = new FBXLoader();
       // 创建group
       let transformerPylonGroup = new THREE.Group();
       transformerPylonGroup.name = "transformerPylonGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/7. 变压器上面的架子.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/7. 变压器上面的架子.FBX`, fbx => 
+      {
         fbx.scale.set(0.0007, 0.0007, 0.0007);
         let transformerPylonModel = fbx;
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; i++) 
+        {
           let model1XOffset = i * 12;
           let model1 = transformerPylonModel.clone();
           model1.name = (i + 1) + '#变压桥塔';
@@ -1248,18 +1275,21 @@ export default {
     },
 
     // 创建变压器
-    addTransformerModel() {
+    addTransformerModel() 
+    {
       let gloader = new GLTFLoader();
       // 创建group
       let transformerGroup = new THREE.Group();
       transformerGroup.name = "transformerGroup";
       // let list = []
-      gloader.load(`/zhangyan-substation/models/8. 变压器.glb`, gltf => {
+      gloader.load(`/zhangyan-substation/models/8. 变压器.glb`, gltf => 
+      {
         gltf.scene.scale.set(0.9, 0.9, 0.9);
         gltf.scene.rotation.y = -0.5 * Math.PI;
         let transformerPylonModel = gltf.scene;
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; i++) 
+        {
           let model1XOffset = i * 12;
           let model1 = transformerPylonModel.clone();
           model1.name = (i + 1) + '#变压器';
@@ -1269,7 +1299,8 @@ export default {
         }
 
         // 添加精灵
-        transformerGroup.children.forEach((item, index) => {
+        transformerGroup.children.forEach((item, index) => 
+        {
           let model1XOffset = index * 11.8;
           this.createDeviceIndicator({
               img: '/zhangyan-substation/images/tk-blue.png',
@@ -1279,7 +1310,8 @@ export default {
               status: '正常',
               txtPaddingX: 22,
               txtPaddingY: 60
-          }).then((panelMate) => {
+          }).then((panelMate) => 
+          {
             let panelMesh =  new THREE.Sprite(panelMate);
             panelMesh.position.set(-32 + model1XOffset, 8, -6);
             panelMesh.scale.set(6, 4, 1);
@@ -1292,13 +1324,15 @@ export default {
     },
 
     // 创建转换房
-    addTransitionHouseModel() {
+    addTransitionHouseModel() 
+    {
       let fbxLoader = new FBXLoader();
       // 创建group
       let houseGroup = new THREE.Group();
       houseGroup.name = "houseGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/6. 屋子1.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/6. 屋子1.FBX`, fbx => 
+      {
         fbx.scale.set(0.0013, 0.0013, 0.0013);
         fbx.rotation.x = 0.5 * Math.PI;
         fbx.rotation.y = 1 * Math.PI;
@@ -1316,13 +1350,15 @@ export default {
     },
 
     // 创建最后的设备（输出端）
-    addLastEquipmentModel() {
+    addLastEquipmentModel() 
+    {
       let fbxLoader = new FBXLoader();
       // 创建group
       let equipmentGroup = new THREE.Group();
       equipmentGroup.name = "lastEquipmentOneGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/13. 最后的设备.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/13. 最后的设备.FBX`, fbx => 
+      {
         fbx.scale.set(0.0008, 0.0008, 0.0008);
         fbx.rotation.x = 0.5 * Math.PI;
         fbx.rotation.y = 1 * Math.PI;
@@ -1341,13 +1377,15 @@ export default {
     },
 
     // 创建最后的管子
-    addLastPipesModel() {
+    addLastPipesModel() 
+    {
       let fbxLoader = new FBXLoader();
       // 创建group
       let pipesGroup = new THREE.Group();
       pipesGroup.name = "lastPipesGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/12. 倒数第二个架子下设备的管子.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/12. 倒数第二个架子下设备的管子.FBX`, fbx => 
+      {
         let pipesModel = fbx;
 
         let model1 = pipesModel.clone();
@@ -1361,19 +1399,22 @@ export default {
     },
 
     // 创建最后的设备（反）
-    addLastEquipmentAgainstModel() {
+    addLastEquipmentAgainstModel() 
+    {
       let fbxLoader = new FBXLoader();
       // 创建group
       let equipmentGroup = new THREE.Group();
       equipmentGroup.name = "lastEquipmentOneAgainstGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/11. 倒数第二个架子下的设备.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/11. 倒数第二个架子下的设备.FBX`, fbx => 
+      {
         fbx.scale.set(0.0008, 0.0008, 0.0008);
         fbx.rotation.x = 0.5 * Math.PI;
         fbx.rotation.y = 1 * Math.PI;
         let postsModel = fbx;
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; i++) 
+        {
           let model1XOffset = i * 11.95;
           let model1 = postsModel.clone();
           model1.name = (i + 1) + '#设备';
@@ -1386,17 +1427,20 @@ export default {
     },
 
     // 创建倒数第二道的柱子（反）（输出端）
-    addLastTwoPostsModel() {
+    addLastTwoPostsModel() 
+    {
       let fbxLoader = new FBXLoader();
       // 创建group
       let postsGroup = new THREE.Group();
       postsGroup.name = "lastTwoPostsGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/3. 柱子.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/3. 柱子.FBX`, fbx => 
+      {
         fbx.scale.set(0.0003, 0.0003, 0.0003);
         let postsModel = fbx;
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; i++) 
+        {
           // 起始位
           let model1XStart = -33.6;
           // 每组的偏移量
@@ -1418,17 +1462,20 @@ export default {
     },
 
     // 创建断路器
-    addDisconnectorModel() {
+    addDisconnectorModel() 
+    {
       let gloader = new GLTFLoader();
       // 创建group
       let transformerGroup = new THREE.Group();
       transformerGroup.name = "transformerGroup";
 
-      gloader.load(`/zhangyan-substation/models/断路器.glb`, gltf => {
+      gloader.load(`/zhangyan-substation/models/断路器.glb`, gltf => 
+      {
         gltf.scene.scale.set(0.12, 0.12, 0.12);
         let transformerPylonModel = gltf.scene;
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; i++) 
+        {
           let model1XOffset = i * 12;
           let model1 = transformerPylonModel.clone();
           model1.name = (i + 1) + '#隔离开关';
@@ -1437,7 +1484,8 @@ export default {
         }
 
         // 添加精灵
-        transformerGroup.children.forEach((item, index) => {
+        transformerGroup.children.forEach((item, index) => 
+        {
           let model1XOffset = index * 11.8;
           this.createDeviceIndicator({
               img: '/zhangyan-substation/images/tk-blue.png',
@@ -1447,7 +1495,8 @@ export default {
               status: '正常',
               txtPaddingX: 45,
               txtPaddingY: 60
-          }).then((panelMate) => {
+          }).then((panelMate) => 
+          {
             let panelMesh =  new THREE.Sprite(panelMate);
             panelMesh.position.set(-33 + model1XOffset, 10, 14);
             panelMesh.scale.set(6, 4, 1);
@@ -1460,17 +1509,20 @@ export default {
     },
 
     // 创建倒数第二道的电力桥塔（输出端）
-    addLastTwoPowerPylonModel() {
+    addLastTwoPowerPylonModel() 
+    {
       let fbxLoader = new FBXLoader();
       // 创建group
       let transformerPylonGroup = new THREE.Group();
       transformerPylonGroup.name = "lastTransformerPylonGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/10. 倒数第二个架子.FBX`, fbx => {
+      fbxLoader.load(`/zhangyan-substation/models/10. 倒数第二个架子.FBX`, fbx => 
+      {
         fbx.scale.set(0.0007, 0.0007, 0.0007);
         let transformerPylonModel = fbx;
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; i++) 
+        {
             let model1XOffset = i * 12;
             let model1 = transformerPylonModel.clone();
             model1.name = (i + 1) + '#变压器桥塔';
@@ -1483,7 +1535,8 @@ export default {
     },
 
     // 创建电线
-    addWireModel() {
+    addWireModel() 
+    {
       let wireGroup = new THREE.Group();
       wireGroup.name = "wireGroup";
 
@@ -1492,7 +1545,8 @@ export default {
       line.material = lineMaterial;
 
       // 高压塔
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 3; i++) 
+      {
         let model1XOffset = i * 24;
         // 北部高压塔
         let wireA1 = new THREE.CatmullRomCurve3([
@@ -1575,7 +1629,8 @@ export default {
       }
 
       // 最两侧柱子
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 12; i++) 
+      {
         // 起始位
         let model1XStart = -36.9;
         // 每组的偏移量
@@ -1624,7 +1679,8 @@ export default {
       }
 
       // 柱子与设备
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 12; i++) 
+      {
         // 起始位
         let model1XStart = -36.9;
         // 每组的偏移量
@@ -1673,7 +1729,8 @@ export default {
       }
 
       // 设备与柱子
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 6; i++) 
+      {
         // 起始位
         let model1XStart = -33.6;
         // 每组的偏移量
@@ -1722,7 +1779,8 @@ export default {
       }
 
       // 柱子与变压器架子
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 6; i++) 
+      {
         // 起始位
         let model1XStart = -33.6;
         // 每组的偏移量
@@ -1748,7 +1806,8 @@ export default {
       }
 
       // 变压器架子与变压器
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 6; i++) 
+      {
         // 起始位
         let model1XStart = -34.3;
         // 每组的偏移量
@@ -1776,7 +1835,8 @@ export default {
       }
 
       // 变压器与转换房与断路器
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 6; i++) 
+      {
         // 起始位
         let model1XStart = -34.3;
         // 每组的偏移量
@@ -1802,7 +1862,8 @@ export default {
       }
 
       // 断路器与架子
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 6; i++) 
+      {
         // 起始位
         let model1XStart = -33.3;
         // 每组的偏移量
@@ -1828,7 +1889,8 @@ export default {
       }
 
       // 架子与柱子
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 6; i++) 
+      {
         // 起始位
         let model1XStart = -33.6;
         // 每组的偏移量
@@ -1859,7 +1921,8 @@ export default {
     generateWire(_curveModel, _comLine, _wireGroup){
       let positionsArryA = [];
       let pointsA = _curveModel.getPoints(100)
-        pointsA.forEach(d => {
+        pointsA.forEach(d => 
+        {
           positionsArryA.push(d.x, d.y, d.z)
         })
         const positionsA = new Float32Array(positionsArryA)
@@ -1872,11 +1935,13 @@ export default {
     },
 
     // 创建风力发电机
-    addWindTurbineModel() {
+    addWindTurbineModel() 
+    {
       let gloader = new GLTFLoader();
       let windTurbineGroup = new THREE.Group();
       windTurbineGroup.name = "windTurbineGroup";
-      gloader.load(`/zhangyan-substation/models/风机(带动画).glb`, gltf => { // <-- 模型文件
+      gloader.load(`/zhangyan-substation/models/风机(带动画).glb`, gltf => 
+      { // <-- 模型文件
           
         // 注意：gltf 里现在有两样东西：
         // 1. gltf.scene (模型)
@@ -1894,7 +1959,8 @@ export default {
           windTurbineGroup.add(model);
           
           // --- 如果有动画，就播放它 ---
-          if (hasAnimations) {
+          if (hasAnimations) 
+          {
             // 1. 为这个克隆体创建一个动画混合器
             let mixer = new THREE.AnimationMixer(model);
             
@@ -1914,13 +1980,15 @@ export default {
  },
 
    // 创建光伏板
-    addSolarPanelModel() {
+    addSolarPanelModel() 
+    {
       // 导入模型用的是 GLTFLoader 和 .glb，所以需要保持一致
       let gloader = new GLTFLoader(); 
       let solarPanelGroup = new THREE.Group();
       solarPanelGroup.name = "solarPanelGroup";
 
-      gloader.load(`/zhangyan-substation/models/光伏板.glb`, gltf => { //
+      gloader.load(`/zhangyan-substation/models/光伏板.glb`, gltf => 
+      { //
 
         let panelModel = gltf.scene; 
         
@@ -1935,8 +2003,10 @@ export default {
         let columns = 10; // 每排 4 个
 
         // --- 1. 添加右侧的光伏板 (对应右侧红框) ---
-        for (let i = 0; i < rows; i++) { 
-          for (let j = 0; j < columns; j++) {
+        for (let i = 0; i < rows; i++) 
+        { 
+          for (let j = 0; j < columns; j++) 
+          {
             let model = panelModel.clone();
             
             // 放在 x = 170 (东墙 x=150 外面)
@@ -1951,8 +2021,10 @@ export default {
         }
 
         // --- 2. 添加左侧的光伏板 (对应左侧红框) ---
-        for (let i = 0; i < rows; i++) { 
-          for (let j = 0; j < columns; j++) {
+        for (let i = 0; i < rows; i++) 
+        { 
+          for (let j = 0; j < columns; j++) 
+          {
             let model = panelModel.clone();
             
             // 放在 x = -170 (西墙 x=-150 外面)
@@ -1972,7 +2044,8 @@ export default {
     },
 
     // 创建引导箭头
-    addArrowModel() {
+    addArrowModel() 
+    {
       // 主干道箭头
       mainArrowsRoadTexture = new THREE.TextureLoader().load('/zhangyan-substation/images/箭头.png');
       mainArrowsRoadTexture.wrapS = mainArrowsRoadTexture.wrapT = THREE.RepeatWrapping;
@@ -2084,10 +2157,13 @@ export default {
     },
 
     // 道路指示移动
-    operateRoadPoint() {
-      if (mainArrowsRoadTexture) {
+    operateRoadPoint() 
+    {
+      if (mainArrowsRoadTexture) 
+      {
         // 防止偏移量过大造成异常
-        if(mainArrowsRoadTexture.offset.y >= 100000) {
+        if(mainArrowsRoadTexture.offset.y >= 100000) 
+        {
           mainArrowsRoadTexture.offset.y = 0;
           arrowsRoadTextureA1.offset.y = 0;
           arrowsRoadTextureA2.offset.y = 0;
@@ -2095,7 +2171,9 @@ export default {
           arrowsRoadTextureB1.offset.y = 0;
           arrowsRoadTextureB2.offset.y = 0;
           arrowsRoadTextureB3.offset.y = 0;
-        } else {
+        }
+        else 
+        {
           mainArrowsRoadTexture.offset.y += 0.02;
           arrowsRoadTextureA1.offset.y += 0.02;
           arrowsRoadTextureA2.offset.y += 0.02;
@@ -2108,12 +2186,15 @@ export default {
     },
     // 
     // 风机扇叶转动
-    operateWindTurbines() {
+    operateWindTurbines() 
+    {
       // 检查数组是不是有内容
-      if (windTurbineClones.length > 0) {
+      if (windTurbineClones.length > 0) 
+      {
         
         // 遍历我们保存的每一个“虚拟轴心” (pivotGroup)
-        windTurbineClones.forEach(pivot => {
+        windTurbineClones.forEach(pivot => 
+        {
           
           // 2. 让它旋转 (根据 3ds Max 截图，X 轴对应 Three.js 的 Z 轴)
           // (这个 pivot 现在的轴心就是 motor 的轴心)
@@ -2129,7 +2210,8 @@ export default {
 
 
     // 墙生成方法
-    createWallDetail(width, height, depth, angle, material, x, y, z, name){
+    createWallDetail(width, height, depth, angle, material, x, y, z, name)
+    {
       let cubeGeometry = new THREE.BoxGeometry(width, height, depth);
       let cube = new THREE.Mesh(cubeGeometry, material);
       cube.position.set(x, y, z);
@@ -2138,38 +2220,44 @@ export default {
       scene.add(cube);
     },
     // 设备指示牌
-    createDeviceIndicator(canvasConfig) {
+    createDeviceIndicator(canvasConfig) 
+    {
       let canvas = document.createElement('canvas');
       canvas.width = 340;
       canvas.height = 240;
       let context = canvas.getContext('2d');
       //添加背景图片，进行异步操作
 
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve, reject) => 
+      {
         let imgMain = new Image();
         imgMain.src = canvasConfig.img;
         let imgPoint = new Image();
         imgPoint.src = "/zhangyan-substation/images/tkPr.png";
 
         //图片加载之后的方法
-        imgMain.onload = () => {
+        imgMain.onload = () => 
+        {
           //将画布处理为透明
           context.clearRect(0, 0, canvas.width, canvas.height );
           //绘画图片
           context.drawImage(imgMain, 0, 0, canvasConfig.width, canvasConfig.height);
-          imgPoint.onload = () =>{
+          imgPoint.onload = () =>
+          {
             // context.drawImage(imgPoint, 0, 160);
             resolve(makeText(context, canvas, canvasConfig));
           }
         };
         //图片加载失败的方法
-        imgMain.onerror = (e) => {
+        imgMain.onerror = (e) => 
+        {
             reject(e);
         };
       });
 
       //内部方法进行文字输入
-      function makeText(context, canvas, canvasConfig) {
+      function makeText(context, canvas, canvasConfig) 
+      {
         context.textAlign = 'start';
         context.font = ' 36px Microsoft YaHei';
         context.fillStyle = '#ffffff';
@@ -2181,7 +2269,8 @@ export default {
       }
     },
     // 设备添加呼吸灯
-    modelAddBLN(obj) {
+    modelAddBLN(obj) 
+    {
       outlinePass.selectedObjects = [obj]
     },
     // 设备添加呼吸灯
@@ -2189,7 +2278,8 @@ export default {
       outlinePass.selectedObjects = []
     },
     // 移动摄像机
-    moveCamera(oldP, oldT, newP, newT, callback) {
+    moveCamera(oldP, oldT, newP, newT, callback) 
+    {
         let tween = new TWEEN.Tween({
             x1: oldP.x,
             y1: oldP.y,
@@ -2210,7 +2300,8 @@ export default {
             1000
         );
         // 每一帧执行函数 、这个地方就是核心了、每变一帧更新一次页面元素
-        tween.onUpdate((object) => {
+        tween.onUpdate((object) => 
+        {
             camera.position.set(object.x1, object.y1, object.z1);
             controls.target.x = object.x2;
             controls.target.y = object.y2;
@@ -2219,7 +2310,8 @@ export default {
         });
 
         // 动画完成后的执行函数
-        tween.onComplete(() => {
+        tween.onComplete(() => 
+        {
             controls.enabled = true;
             callback && callback();
             // this.tweenCallBack && this.tweenCallBack();
@@ -2230,9 +2322,11 @@ export default {
         tween.start();
     },
     // 添加漫游
-    roamItem(nowPosition, endPosition, time, cameraRe, controlsRe, easing) {
+    roamItem(nowPosition, endPosition, time, cameraRe, controlsRe, easing) 
+    {
       var tween1 = new TWEEN.Tween(nowPosition).to(endPosition, time).easing(easing)
-      tween1.onUpdate((object) => {
+      tween1.onUpdate((object) => 
+      {
         cameraRe.position.x = object.x1
         cameraRe.position.y = object.y1
         cameraRe.position.z = object.z1
@@ -2244,7 +2338,8 @@ export default {
       return tween1
     },
     // 视频加载
-    addVideoPlane() {
+    addVideoPlane() 
+    {
       scene.remove(videoObjects);
       let planeGeometry = new THREE.PlaneGeometry(5, 3);
       let material = new THREE.MeshPhongMaterial();
@@ -2261,7 +2356,8 @@ export default {
       videoObjects = mesh;
       scene.add(mesh);
     },
-    removeVideoPlane() {
+    removeVideoPlane() 
+    {
       scene.remove(videoObjects);
     },
   }
@@ -2273,7 +2369,8 @@ export default {
 @import './styles/animate.css';
 @import './styles/card.scss';
 // 整屏撑满
-.full-content {
+.full-content 
+{
   position: absolute;
   width: 1920px;
   height: 1080px;
@@ -2282,41 +2379,48 @@ export default {
   -webkit-background-size: cover;
   background-size: cover;
 
-  #container {
+  #container 
+  {
     position: absolute;
     width: 100%;
     height: 100%;
   }
 
-  .page {
+  .page 
+  {
     position: relative;
     top: 0;
-    .left {
+    .left 
+    {
       position: absolute;
       left: 21px;
       top: 80px;
       width: 340px;
     }
-    .detail-left {
+    .detail-left 
+    {
       position: absolute;
       left: 21px;
       top: 80px;
       width: 600px;
     }
-    .right {
+    .right 
+    {
       position: absolute;
       right: 21px;
       top: 80px;
       width: 340px;
     }
   }
-  .panel {
+  .panel 
+  {
     border: 0;
     width: 270px;
     text-indent: 20px;
     font-family: "tencent";
   }
-  #video {
+  #video 
+  {
     position: absolute;
     width: 0;
     height: 0;
