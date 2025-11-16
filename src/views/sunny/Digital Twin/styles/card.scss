@@ -1,0 +1,49 @@
+.v-card {
+    margin-bottom: 22px;
+    width: 100%;
+    height: auto;
+    .c-title {
+        border-left: 2px solid rgba(2, 164, 247, 0.6);
+        border-right: 2px solid rgba(2, 164, 247, 0.6);
+        .c-t-content {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 30px;
+            line-height: 30px;
+            width: 100%;
+            color: #02A4F7;
+            border-bottom: 1px transparent solid;
+            background: linear-gradient(90deg, rgba(2, 164, 247, 0), rgba(2, 164, 247, 0.37), rgba(2, 164, 247, 0.03));
+            .c-t-c-center {
+                font-size: 18px;
+                font-weight: bold;
+            }
+            .c-t-c-right {
+                position: absolute;
+                right: 0;
+                display: flex;
+                align-items: center;
+                font-size: 16px;
+                padding-right: 15px;
+                &:hover {
+                    cursor: pointer;
+                }
+                span {
+                    color: #02A4F7;
+                    font-size: 14px;
+                }
+                .selected {
+                    color: #428bfe;
+                    font-size: 16px;
+                }
+            }
+        }
+    }
+    .c-content {
+        height: auto;
+        padding: 15px;
+        background: rgba(0, 0, 0, 0.5);
+    }
+}
