@@ -56,6 +56,19 @@ export const constantRoutes = [
     component: () => import("@/views/login/index"),
     hidden: true
   },
+  
+//-------------------------------
+//直接访问数字孪生系统的路由配置
+  {
+    path: '/digital-twin',
+    name: 'DigitalTwin',
+    // ⚠️ 需要注意这里的路径要和实际文件路径对应
+    component: () => import('@/views/sunny/Digital Twin/index'), 
+    hidden: true, // 在侧边栏隐藏（因为它全屏显示的，不需要侧边栏入口）
+    meta: { title: '数字孪生系统', icon: 'dashboard', noCache: true }
+  },
+//-------------------------------
+
   {
     path: "/auth-redirect",
     component: () => import("@/views/login/auth-redirect"),
@@ -71,6 +84,7 @@ export const constantRoutes = [
     component: () => import("@/views/error-page/401"),
     hidden: true
   },
+  /*
   {
     path: "/",
     component: Layout,
@@ -84,6 +98,14 @@ export const constantRoutes = [
       }
     ]
   },
+  *///旧版本的首页路由配置，现已注释
+  {
+    path: '/',
+    // component: Layout, // 注释掉或删除 Layout，因为我们不想加载框架结构
+    redirect: '/digital-twin', // <--- 【核心修改】指向我们刚才定义的路由
+    hidden: true // 隐藏这个路由，防止在菜单显示
+  },
+  // 新增 sunny 路由配置
   {
     path: "/sunny",
     component: BSCLayout,

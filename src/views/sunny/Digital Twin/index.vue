@@ -1,6 +1,22 @@
 <template>
-  <div class="full-content">
+  <div
+    class="full-content"
+  >
     <div id="container" />
+    
+    <transition name="fade">
+      <div
+        v-if="isLoading"
+        class="loading-mask"
+      >
+        <div class="loading-content">
+          <div class="spinner" />
+          <div class="loading-text">
+            数字孪生系统资源加载中... {{ loadingProgress }}%
+          </div>
+        </div>
+      </div>
+    </transition>
     <div class="page">
       <transition
         enter-active-class="animated fadeInDown"
@@ -36,7 +52,9 @@
           class="detail-left"
         >
           <!-- 设备详情 -->
-          <sbxq />
+          <sbxq
+            @switchDevice="switchEquipmentDetail" 
+          />
         </div>
       </transition>
       <transition
@@ -60,7 +78,74 @@
           <hjxx />
         </div>
       </transition>
+      <!--弹窗样式，当showFaultModal为true时显示弹窗-->
     </div>
+    <FaultMonitor 
+      ref="faultMonitor"
+      :visible="showFaultModal"
+      :turbine-id="currentTurbineId"
+      :fault-id="currentFaultId"
+      :initial-fault-type="currentFaultType"
+      @close="showFaultModal = false"
+      @resolve="handleFaultResolve"
+    />
+    <transition name="fade">
+      <div v-if="showAIModal" class="tech-modal ai-modal">
+        <div class="modal-title">AI 全局智能分析</div>
+        <div class="modal-content">
+          <div class="data-row">
+            <span>系统健康度：</span>
+            <span class="highlight">{{ aiData.healthScore || '--' }}</span>
+          </div>
+          <div class="data-row">
+            <span>优化建议：</span>
+            <span class="text-content">{{ aiData.suggestion || '正在分析中...' }}</span>
+          </div>
+           </div>
+        <div class="close-btn" @click="showAIModal = false">×</div>
+      </div>
+    </transition>
+
+    <transition name="fade">
+      <div v-if="showPowerModal" class="tech-modal power-modal">
+        <div class="modal-title">发电量智能预测</div>
+        <div class="modal-content">
+          <div class="data-row">
+            <span>未来1小时预测：</span>
+            <span class="highlight-green">{{ powerData.nextHour || 0 }} kWh</span>
+          </div>
+          <div class="data-row">
+            <span>全天预计产能：</span>
+            <span class="highlight-green">{{ powerData.todayTotal || 0 }} kWh</span>
+          </div>
+           <div class="data-row">
+            <span>预测准确率：</span>
+            <span>{{ powerData.accuracy || '--' }}%</span>
+          </div>
+        </div>
+        <div class="close-btn" @click="showPowerModal = false">×</div>
+      </div>
+    </transition>
+<!--新增发电量预测和智能分析弹窗-->
+    <div class="page">
+         <transition enter-active-class="animated fadeInRight" leave-active-class="animated fadeOutRight" appear>
+        <div class="right">
+          <czt
+            @pushEquipmentWarning="pushEquipmentWarning"
+            @viewEquipmentDetail="viewEquipmentDetail"
+            @roamCheck="roamCheck"
+            @realTimeMonitor="realTimeMonitor"
+            @masterControlView="handleAIAnalysis"  
+            @cockpitControlView="handlePowerPrediction" 
+          />
+          <wlsjtj />
+          <hjxx />
+        </div>
+      </transition>
+    </div>
+
+
+
     <!-- 实时监控视频 -->
     <video
       id="video"
@@ -78,18 +163,18 @@
 <!-- 初始化Three.js模块-->
 <script>
 import * as THREE from "three";
-import { Clock, GridHelper } from "three";
+import { Clock } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TWEEN } from "three/examples/jsm/libs/tween.module.min.js";
 import dat from "three/examples/jsm/libs/dat.gui.module";
 import Stats from "three/examples/jsm/libs/stats.module";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
-import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
+//import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 /** 
  * @file three.js 入口文件
- * @author zhangyan
- * @date 2021-09-01
+ * @author sunny
+ * @date 2025-10-20
  * THREE.js 核心组件导入
  * Clock: 用于时间计算和动画控制的时钟类
  * GridHelper: 用于创建网格辅助线，帮助可视化场景坐标系
@@ -126,19 +211,21 @@ import czt from './components/czt.vue';
 import wlsjtj from './components/wlsjtj.vue';
 import hjxx from './components/hjxx.vue';
 import sbxq from './components/sbxq.vue';
+import FaultMonitor from './components/FaultMonitor.vue'; // 风机异常报警界面
 
 
 // 变量放外层可以解决动画卡顿帧数变低的问题
 //在这里同时初始化函数，将这些函数初始化为null
 let stats = null;
 let scene = null;
-let gui = null;
-let datGui = null;
-let clock = null;
 let light = null;
 let camera = null;
 let renderer = null;
 let controls = null;
+let clock = null;
+let gui = null;
+let datGui = null;
+let effectFXAA = null;
 // 道路标志箭头
 let mainArrowsRoadTexture = null;
 let arrowsRoadTextureA1 = null;
@@ -151,22 +238,21 @@ let arrowsRoadTextureB3 = null;
 let composer = null;
 let renderPass = null;
 let outlinePass = null;
-let effectFXAA = null;
 // 保存变压器变量，后期做推送设备告警使用
 //这里也是初始化。通过使用空数组来初始化数组
 let byqList = [];
 let windTurbineClones = []; // <-- 在这里添加新数组，用来存放所有风机
-let windTurbineMixers = [];// <-- 在这里添加新数组，存放动画混合器
 let selectedObjects = [];
 // 漫游
 let roamTweenEndCarm = [];
 // 监控
 let videoObjects = null;  // 播放视频的object
 let monitorObject = [];  // 摄像头模型的object
+let windTurbineDataList = [];
 //函数和数组初始化结束
 
 // 组件添加
-export default {
+export default {//导入外部组件
   name: "Substation",
   components: {
     navigation,//变电站
@@ -176,23 +262,223 @@ export default {
     czt,//操作台
     wlsjtj,//物联事件统计
     hjxx,//环境信息
-    sbxq//设备状态
+    sbxq,//设备状态
+    FaultMonitor//风机故障监控
   },
   data() {
     return {
       deviceDetailShow: false,
-      videoUrl: require('../../../../public/zhangyan-substation/video/videoPlane.mp4'),
-    };
-  },
-  mounted() {//钩子函数，在组件挂载完成后调用
+      videoUrl: require('../../../../public/sunny-substation/video/videoPlane.mp4'),
+      // --- 【新增】加载状态变量 ---
+      isLoading: true,     // 是否显示加载层
+      loadingProgress: 0,  // 加载进度 0-100
+      loadingManager: null, // 加载管理器实例 
+      // --- 【新增】故障详情变量 ---
+      showFaultModal: false,
+      currentFaultId: null,
+      currentTurbineId: null,
+      currentFaultType: 'normal',
+      aiAdvice: '',
+      chartData: null,
+      wsTrigger: null,
+      // === 【新增】AI分析与预测相关数据 ===
+      wsAI: null,           // 9760 WebSocket对象
+      wsPower: null,        // 9762 WebSocket对象
+      
+      showAIModal: false,   // AI弹窗显示开关
+      aiData: {             // 接收到的AI数据结构(示例)
+        healthScore: '98.5',
+        suggestion: '系统运行平稳，建议保持当前策略'
+      },
+      
+      showPowerModal: false,// 预测弹窗显示开关
+      powerData: {          // 接收到的预测数据结构(示例)
+        nextHour: 1200,
+        todayTotal: 25000,
+        accuracy: 99.2,
+    }
+  };
+},
+  
+  mounted() {
+    // 钩子函数，在组件挂载完成后调用
+    console.log("🚀 Vue mounted 钩子开始执行...");
     this.init();
+    // 启动 WebSocket 监听
+    this.initWindTurbineSpeedSetSocket();
+    // === 【新增】初始化两个新的 WebSocket 监听 ===
+    this.initAIWebSocket();
+    this.initPowerWebSocket();
+    //新增：初始化故障监听
+    this.initFaultListener(); 
+    window.controlTurbine = this.setTurbineSpeed;
   },
   destroyed() {
     this.destroyed();
+    if (this.wsTrigger) this.wsTrigger.close(); 
+    // === 【新增】页面销毁时关闭连接 ===
+    if (this.wsAI) this.wsAI.close();
+    if (this.wsPower) this.wsPower.close();
   },
   methods: {
+    // 初始化 WebSocket 连接
+    initWindTurbineSpeedSetSocket() {
+      // 风机速度指令发送端口号是9000端口 
+      const ws = new WebSocket('ws://127.0.0.1:9000');
+
+      ws.onopen = () => {
+        console.log('🔗 风速控制（9000端口）已连接');
+      };
+
+      ws.onmessage = (event) => {
+        // 接收 Python 发来的数据
+        try {
+          const data = JSON.parse(event.data);
+          // 后端发来的数据格式是: { "id": 1, "speed": 0.1 }
+          if (data.id && typeof data.speed !== 'undefined') {
+            this.setTurbineSpeed(data.id, data.speed);
+          }
+        } catch (e) {
+          console.error('收到非 JSON 数据:', event.data);
+        }
+      };
+    
+      ws.onclose = () => {
+        console.log('🔗风速控制（9000端口）连接断开，5秒后尝试重连...');
+        setTimeout(this.initWindTurbineSpeedSetSocket, 5000);
+      };
+    },
+    //故障监听服务
+    initFaultListener() {
+      this.wsTrigger = new WebSocket('ws://localhost:9752');
+      
+      this.wsTrigger.onopen = () => {
+        console.log('🚨 故障监听服务 (9752端口) 已连接');
+        
+      };
+      this.wsTrigger.onclose = () => {
+        console.log('🚨 故障监听服务 (9752端口) 连接断开，5秒后尝试重连...');
+        setTimeout(this.initFaultListener, 5000);
+      };
+
+      this.wsTrigger.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log("故障监听服务收到故障触发指令:", data);
+
+          // 1. 更新数据
+          this.currentFaultId = data.fault_id;
+          this.currentTurbineId = data.turbine_id;
+          // 简单的逻辑判断：ID大于1000视为电压故障，否则为常规
+          this.currentFaultType = parseInt(data.fault_id) >= 1000 ? 'voltage' : 'normal';
+
+          // 2. 打开弹窗 (这将触发子组件的 mounted)
+          this.showFaultModal = true;
+          
+          // 可选：在这里调用相机移动方法，聚焦到故障风机
+          // this.focusOnTurbine(data.turbine_id); 
+
+        } catch (e) {
+          console.error("故障指令解析失败:", e);
+        }
+      };
+    },
+
+    // 处理子组件传来的解决事件
+    handleFaultResolve() {
+        // 关闭弹窗
+        this.showFaultModal = false;
+        console.log('故障已解决，关闭弹窗');
+        // 这里可以添加逻辑让相机回到默认位置
+    },
+    // 后端设置风机速度接口
+    setTurbineSpeed(id, speed) {
+      // 注意：这里使用 windTurbineDataList 而不是 this.windTurbineDataList
+      const turbine = windTurbineDataList.find(item => item.id === id); 
+      if (turbine) {
+        if (speed <= 0) {
+          turbine.isRunning = false;
+          turbine.speed = 0;
+        } else {
+          turbine.isRunning = true;
+          turbine.speed = speed;
+        }
+        console.log(`收到指令：风机 ${id} 转速调整为 ${speed}`);
+      }
+    },
+// === 【新增】1. AI全局智能分析 (端口 9760) ===
+    initAIWebSocket() {
+      this.wsAI = new WebSocket('ws://127.0.0.1:9760');
+      
+      this.wsAI.onopen = () => {
+        console.log('🤖 AI智能分析服务 (9760) 已连接');
+      };
+      
+      this.wsAI.onmessage = (event) => {
+        try {
+          // 假设后端传回来的数据是 JSON 格式
+          const res = JSON.parse(event.data);
+          console.log('收到AI分析数据:', res);
+          // 更新数据
+          this.aiData = res; 
+          // 如果收到重要消息，可以自动弹窗，或者仅更新数据
+        } catch (e) {
+          console.error('AI数据解析失败:', event.data);
+        }
+      };
+      
+      this.wsAI.onclose = () => {
+        // 断线重连机制
+        setTimeout(() => this.initAIWebSocket(), 5000);
+      };
+    },
+
+    // 点击“AI全局智能分析”按钮触发
+    handleAIAnalysis() {
+      console.log("点击了AI分析按钮");
+      this.showAIModal = !this.showAIModal; // 切换显示/隐藏
+      
+      // 可选：点击时向后端发送一个请求，要求立即分析
+      if (this.wsAI && this.wsAI.readyState === WebSocket.OPEN) {
+        this.wsAI.send(JSON.stringify({ action: "start_analysis" }));
+      }
+    },
+    // === 【新增】2. 发电量智能预测 (端口 9762) ===
+    initPowerWebSocket() {
+      this.wsPower = new WebSocket('ws://127.0.0.1:9762');
+      
+      this.wsPower.onopen = () => {
+        console.log('⚡ 发电量预测服务 (9762) 已连接');
+      };
+      
+      this.wsPower.onmessage = (event) => {
+        try {
+          const res = JSON.parse(event.data);
+          console.log('收到预测数据:', res);
+          this.powerData = res;
+        } catch (e) {
+          console.error('预测数据解析失败:', event.data);
+        }
+      };
+      
+      this.wsPower.onclose = () => {
+        setTimeout(() => this.initPowerWebSocket(), 5000);
+      };
+    },
+    // 点击“发电量智能预测”按钮触发
+    handlePowerPrediction() {
+      console.log("点击了发电量预测按钮");
+      this.showPowerModal = !this.showPowerModal; // 切换显示/隐藏
+      
+      if (this.wsPower && this.wsPower.readyState === WebSocket.OPEN) {
+        this.wsPower.send(JSON.stringify({ action: "get_prediction" }));
+      }
+    },
+
+    
     // 初始化
     init() {
+      this.initLoadingManager(); // <--- 1. 先初始化管理器
       this.createScene(); // 创建场景
       this.createGui();// 创建gui
       this.createRender(); // 创建渲染器
@@ -205,6 +491,31 @@ export default {
       this.createModel(); // 创建对象
       this.render(); // 渲染
       this.addEvent(); // 监听事件，比如窗口缩放和点击模型
+    },
+    // --- 【新增】初始化加载管理器方法 ---
+    initLoadingManager() {
+      this.loadingManager = new THREE.LoadingManager();
+      
+      // 1. 加载过程中的回调：更新百分比
+      this.loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
+        // 计算百分比
+        this.loadingProgress = Math.floor((itemsLoaded / itemsTotal) * 100);
+        console.log(`加载进度: ${this.loadingProgress}% (${itemsLoaded}/${itemsTotal})`);
+      };
+
+      // 2. 加载完成的回调：隐藏遮罩层
+      this.loadingManager.onLoad = () => {
+        console.log("所有模型加载完毕！");
+        // 稍微延迟一下，看到100%，体验更好
+        setTimeout(() => {
+          this.isLoading = false;
+        }, 500);
+      };
+      
+      // 3. 出错的回调
+      this.loadingManager.onError = (url) => {
+        console.error('加载失败:', url);
+      };
     },
     //销毁
     destroyed() {//销毁函数
@@ -235,16 +546,21 @@ export default {
       document.removeEventListener("click", this.onModelClick, false);
     },
 
+    
+
+
     // 创建场景
     createScene() {
   scene = new THREE.Scene();
   // 3. 添加 RGBELoader 来加载 HDR背景
-  const rgbeLoader = new RGBELoader();
-  rgbeLoader.load('/zhangyan-substation/images/my_sky.hdr', (texture) => {
+  const rgbeLoader = new RGBELoader(this.loadingManager);
+  rgbeLoader.load('/sunny-substation/images/my_sky.hdr', (texture) => {
     // 设置贴图的映射方式为“等距圆柱投影”，这是 HDR 天空球的标准设置
     texture.mapping = THREE.EquirectangularReflectionMapping;
+    texture.rotation = Math.PI/2; // 旋转 180 度（π 弧度）
+    texture.center.set(0.5, 0.5); // 设置旋转中心为贴图中心
 
-    // 将 HDR 应用为场景的背景 (你看到的360°天空)
+    // 将 HDR 应用为场景的背景 (360°天空)
     scene.background = texture;
     
     // 将 HDR 应用为场景的环境光 (PBR 材质会反射这个光)
@@ -268,32 +584,89 @@ export default {
     createRender() {
       const element = document.getElementById("container");
       renderer = new THREE.WebGLRenderer({
-        alpha: true,//透明度
-        antialias: true//抗锯齿
+        alpha: true,
+        antialias: false,
+        FXAAShader: true,
+      
+        // 重点修改：开启对数深度缓冲区，完美解决远距离和大场景下的模型闪烁问题
+        logarithmicDepthBuffer: true 
       });
-      renderer.shadowMap.enabled = false; // 允许阴影投射
-      // renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      renderer.setPixelRatio(window.devicePixelRatio); // 为了兼容高清屏幕
+      renderer.shadowMap.enabled = true; // 确保开启阴影 (原代码注释掉了或设为false)
+      //修改结束
+      renderer.setPixelRatio(window.devicePixelRatio,1); // 为了兼容高清屏幕
       renderer.setSize(element.clientWidth, element.clientHeight); // 设置渲染区域尺寸
       renderer.setClearAlpha(0.5);
       // renderer.setClearColor(0x040203, 0.9); // 设置背景颜色
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.outputEncoding = THREE.sRGBEncoding;
       element.appendChild(renderer.domElement);
     },
     // 创建光源
+    // 创建光源
     createLight() {
-      // 环境光（如果是全白，在地面就看不出阴影，但可以把模型照亮）
-      scene.add(new THREE.AmbientLight(0x999999, 0));
-      // 另一种平行光
-      light = new THREE.DirectionalLight(0xffffff, 0.7); // 从正上方（不是位置）照射过来的平行光，0.7的强度
-      light.position.set(100, 100, 100);
-      light.position.multiplyScalar(1);
+      // 1. 修改：大大提高环境光强度 (从0改为0.6或0.8)，解决死黑问题
+      scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+      
+      // 2. 修改：调整平行光位置，使其从侧前方打过来 (Z轴设为正数可以让光照到物体正面)
+      light = new THREE.DirectionalLight(0xffffff, 1.0); // 强度也可以稍微提高到1.0
+      light.position.set(50, 100, 150); // Z轴改为正数，让光照打在正面
       light.castShadow = true;
+      // 优化 1: 缩小阴影贴图尺寸 (如果不需要极致的阴影细节，1024 够了，不需要更大)
       light.shadow.mapSize = new THREE.Vector2(1024, 1024);
-      // scene.add(new THREE.DirectionalLightHelper(light, 5));
-      scene.add(light);
+      // 优化 2: 严格限制阴影相机的范围 (Frustum)
+     // 默认的阴影相机范围可能很小或过大，手动设置可以避免渲染不必要的区域
+     const d = 500; // 根据场景大小调整这个值
+     light.shadow.camera.left = -d;
+     light.shadow.camera.right = d;
+     light.shadow.camera.top = d;
+     light.shadow.camera.bottom = -d;
+  
+     // 优化 3: 调整阴影偏差，减少波纹
+     light.shadow.bias = -0.0005;
+     scene.add(light);
+      
+      // 可选：如果觉得还不够立体，可以加一个半球光模拟天空地面反光
+      // const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+      // hemiLight.position.set(0, 200, 0);
+      // scene.add(hemiLight);
     },
+    // 默认相机配置（修改此处即可改变默认视角位置与观察高度）
+    getDefaultCameraConfig() {
+      return {
+        position: { x: -700, y: 400, z: -200 }, // x: 前后, y: 高度(俯视程度), z: 左右
+        target: { x: 400, y: 5, z: 0 } // 相机注视点（控件 target）
+      };
+    },
+    
+    // 视角位置配置 - 集中管理所有视角参数，方便精细调整
+    getViewPositions() {
+      // 获取默认相机配置作为回归视角
+      var defaultCameraConfig = this.getDefaultCameraConfig();
+      
+      return {
+        // 风机视角配置 - 每个风机使用相对偏移量
+        windTurbine: {
+          cameraOffset: { x: -130, y: 200, z: 30 }, // 相机相对于风机的偏移量
+          targetOffset: { x: 0, y: 0, z: 0 }     // 目标点相对于风机的偏移量
+        },
+        // 右侧光伏板视角配置
+        rightSolarPanel: {
+          cameraPosition: { x: -120, y: 50, z: -140 },
+          targetPosition: { x: -120, y: 0, z: -190 }
+        },
+        // 左侧光伏板视角配置
+        leftSolarPanel: {
+          cameraPosition: { x: 50, y: 50, z: 380 },
+          targetPosition: { x: 50, y: 0, z: 330 }
+        },
+        // 默认视角配置 - 与默认相机配置保持一致
+        default: {
+          cameraPosition: { x: defaultCameraConfig.position.x, y: defaultCameraConfig.position.y, z: defaultCameraConfig.position.z },
+          targetPosition: { x: defaultCameraConfig.target.x, y: defaultCameraConfig.target.y, z: defaultCameraConfig.target.z }
+        }
+      };
+    },
+
     // 创建相机
     createCamera() {
       const element = document.getElementById("container");
@@ -303,17 +676,19 @@ export default {
         0.1,
         100000
       );
-      camera.position.x = -120; // 正视
-      camera.position.y = 130; // 俯视
-      camera.position.z = 50; // 离模型有多远
-      camera.lookAt(new THREE.Vector3(0, 0, 0)); // 设置相机方向
+      // 使用默认配置来设置相机位置与朝向，方便统一管理和快速调整
+      const cfg = this.getDefaultCameraConfig();
+      camera.position.set(cfg.position.x, cfg.position.y, cfg.position.z);
+      camera.lookAt(new THREE.Vector3(cfg.target.x, cfg.target.y, cfg.target.z)); // 设置相机方向
       scene.add(camera);
     },
     // 创建控件对象
     createControls() {
       // 初始化控制器
       controls = new OrbitControls(camera, renderer.domElement);
-      controls.target.set(-25, 5, 0); // ------------------
+      // 使用同一套默认配置来设置控件目标（摄像机观察点）
+      const cfg = this.getDefaultCameraConfig();
+      controls.target.set(cfg.target.x, cfg.target.y, cfg.target.z);
       // controls.minDistance = 80
       // controls.maxDistance = 500000
       // controls.maxPolarAngle = Math.PI / 3  // 仰看角度
@@ -344,24 +719,31 @@ export default {
       outlinePass.hiddenEdgeColor = new THREE.Color(0, 0, 0); // 呼吸消失的颜色
       outlinePass.clear = true;
       composer.addPass(outlinePass)
+      // ================== 【新增代码 START】 ==================
+      // 3. 添加 FXAA 抗锯齿通道 (放在链条的最后)
+      // 这一步能解决边缘的锯齿感
+      effectFXAA = new ShaderPass(FXAAShader);
+      const pixelRatio = renderer.getPixelRatio();
+      effectFXAA.uniforms['resolution'].value.set(1 / (window.innerWidth * pixelRatio), 1 / (window.innerHeight * pixelRatio));
+      composer.addPass(effectFXAA);
+  // ================== 【新增代码 END】 ==================
     },
 
     //渲染内容
     render() {
       // 道路指示移动
       this.operateRoadPoint()
-      this.operateWindTurbines();
-      //下面是风机动画代码
-      // 1. 获取自上一帧以来经过的时间
-      let delta = clock.getDelta();
-      // 2. 更新所有风机动画
-      if (windTurbineMixers.length > 0) 
-      {
-        windTurbineMixers.forEach(mixer => {
-          mixer.update(delta); // 传入时间差，更新动画
-        });
-      }
-      // 风机动画添加结束
+      /// ================== 风机动画实现 START ==================
+      // 这里没有 'this.'，因为把它定义在了 export default 外面
+      if (windTurbineDataList && windTurbineDataList.length > 0) {
+          windTurbineDataList.forEach(turbine => {
+          if (turbine.rotor && turbine.isRunning) {
+                //在threejs中风机旋转轴是X轴
+               turbine.rotor.rotateX(turbine.speed); 
+               }
+            });
+        }
+  // =========================【END】====================================
 
       // 3. 渲染场景
       requestAnimationFrame(this.render);
@@ -372,6 +754,8 @@ export default {
       // 呼吸灯效果要放到最后渲染，要不然没效果
       if (composer) {
         composer.render();
+      } else {
+        renderer.render(scene, camera);
       }
     },
     addEvent() 
@@ -382,66 +766,74 @@ export default {
     // 窗口监听函数
     onWindowResize()
      {
-      const element = document.getElementById("container");
+      const element = document.getElementById("container");// 获取渲染容器元素
       camera.aspect = element.clientWidth / element.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(element.clientWidth, element.clientHeight);
+      if (composer) {
+          composer.setSize(element.clientWidth, element.clientHeight);
+        }
+    // 如果有保存 effectFXAA 变量到 data 或外部变量，这里也需要更新 uniforms
+    // effectFXAA.uniforms['resolution'].value.set(1 / (element.clientWidth * pixelRatio), 1 / (element.clientHeight * pixelRatio));
+                  
     },
     onModelClick(event) 
     {
-      // // 获取画布
-      // let mainCanvas = document.querySelector('#container canvas');
-      // // 将屏幕坐标转为标准设备坐标(支持画布非全屏的情况)
-      // let x = ((event.clientX - mainCanvas.getBoundingClientRect().left) / mainCanvas.offsetWidth) * 2 - 1; // 设备横坐标
-      // let y = -((event.clientY - mainCanvas.getBoundingClientRect().top) / mainCanvas.offsetHeight) * 2 + 1; // 设备纵坐标
-      // let vector = new THREE.Vector3(x, y, 1); // 设备坐标
-      // // 创建光线投射对象
-      // const raycaster = new THREE.Raycaster();
-      // raycaster.setFromCamera(vector, camera);
-      // // 射线检查排出所有元素
-      // let intersects = raycaster.intersectObjects(scene.children, true);
-      // // 过滤出模型，只取鼠标点击事件最近的一个
-      // // let intersect = intersects.filter((intersect) => !(intersect.object instanceof GridHelper))[0];
-      // intersects.forEach(item => {
-      //   if (item.object && item.object.parent && item.object.parent.parent && item.object.parent.parent.name) {
-      //     if (item.object.parent.parent.name.indexOf('变压器') > -1) {
-      //       // 呼吸灯
-      //       this.outlineObj([item.object.parent.parent]);
-      //       // 调整摄像头
-      //       this.moveCamera(
-      //           camera.position,
-      //           controls.target,
-      //           { x: item.point.x, y: item.point.y + 8, z: item.point.z + 7 },
-      //           { x: item.point.x, y: item.point.y, z: item.point.z },
-      //           () => {}
-      //       );
-      //     }
-      //   }
-      // })
+      // 【新增】关键修复：如果点击的不是canvas画布（比如点到了UI按钮），直接退出，不执行3D逻辑
+      if (event.target.tagName !== 'CANVAS') return;// !== 不等于运算符，用于比较两个值是否不相等。
       // 获取画布
       let mainCanvas = document.querySelector('#container canvas');
       // 将屏幕坐标转为标准设备坐标(支持画布非全屏的情况)
       let x = ((event.clientX - mainCanvas.getBoundingClientRect().left) / mainCanvas.offsetWidth) * 2 - 1; // 设备横坐标
       let y = -((event.clientY - mainCanvas.getBoundingClientRect().top) / mainCanvas.offsetHeight) * 2 + 1; // 设备纵坐标
       let vector = new THREE.Vector3(x, y, 1); // 设备坐标
-      // 创建光线投射对象
+      // 创建射线投射器对象
+      //通过Raycast来检测射线与场景中的对象相交
+      //从而获取相交对象
+      //实现检测鼠标点按的功能
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(vector, camera);
       // 射线检查排出所有元素
       let intersects = raycaster.intersectObjects(scene.children, true);
-      // 过滤出模型，只取鼠标点击事件最近的一个
-      // let intersecta = intersects.filter((intersect) => !(intersect.object instanceof GridHelper))[0];
       let isFind = false;
+
+      // 预先定义不需要响应详情的物体名称列表
+      const groundNames = ['山地_草地区域', 'Baseplate_Floor', '山地'];
+
       intersects.forEach(item => 
       {
-        if (item.object && item.object.parent && item.object.parent.parent && item.object.parent.parent.name) {
-          //&&逻辑与，多个条件都满足时返回true
-          if (item.object.parent.parent.name.indexOf('变压器') > -1) {
+        // 如果已经找到目标就不再处理
+        if (isFind) return; 
+
+        // --- 新增逻辑：如果点击的是地面，且当前有设备被选中（detailShow为true），则执行退出 ---
+        if (item.object.name && groundNames.includes(item.object.name) || 
+           (item.object.parent && groundNames.includes(item.object.parent.name))) {
+             // 只有当之前是在查看详情状态时，点击地面才触发“退出”
+             // 这样可以避免误触
+             isFind = true; // 标记为已找到（找到的是地面）
+             this.modelRemoveBLN();
+             this.deviceDetailShow = false;
+             const viewPositions = this.getViewPositions();
+             this.moveCamera(
+                camera.position,
+                controls.target,
+                viewPositions.default.cameraPosition,
+                viewPositions.default.targetPosition,
+                () => {}
+             );
+             return;
+        }
+        // --- 新增逻辑结束 ---
+        if (item.object && item.object.parent && item.object.parent.parent) {
+          let parent = item.object.parent.parent;
+          
+          // 处理变压器点击
+          if (parent.name && parent.name.indexOf('变压器') > -1) {
             // 处理一下模型选中多次问题
             if (isFind === false)
              {
               isFind = true
-              this.modelAddBLN(item.object.parent.parent)
+              this.modelAddBLN(parent)
               this.moveCamera(
                   camera.position,
                   controls.target,
@@ -458,30 +850,218 @@ export default {
                 this.deviceDetailShow = true
               }, 0)
             }
-          } else 
-          {
-            this.modelRemoveBLN()
-            this.deviceDetailShow = false
-            this.moveCamera(
-              camera.position,
-              controls.target,
-              { x: -80, y: 70, z: 40 },
-              { x: -25, y: 5, z: 0 },
-              () => {}
-            );
+          }
+
+          // 处理风机点击
+          else if (parent.parent && parent.parent.name === 'windTurbineGroup') {
+              if (isFind === false) {
+                isFind = true;
+                
+                let clickedWindTurbine = null;
+                let currentObj = item.object;
+                
+                // 向上查找风机对象
+                while (currentObj && !clickedWindTurbine) {
+                  if (currentObj.name && (currentObj.name.indexOf('windTurbine_') === 0 || currentObj.name.indexOf('windTurbineNoAnimation_') === 0)) {
+                    clickedWindTurbine = currentObj;
+                  }
+                  currentObj = currentObj.parent;
+                }
+                
+                // 兜底查找
+                 if (!clickedWindTurbine && item.object.parent && (item.object.parent.name.indexOf('windTurbine_') === 0 || item.object.parent.name.indexOf('windTurbineNoAnimation_') === 0)) {
+                    clickedWindTurbine = item.object.parent;
+                 }
+
+                if (clickedWindTurbine) {
+                  this.modelAddBLN(clickedWindTurbine);
+                  
+                  // =============================================
+                  // 【核心修改】：无动画风机点击逻辑
+                  // =============================================
+                  if (clickedWindTurbine.name.indexOf('windTurbineNoAnimation_') === 0) {
+                      // 1. 获取基准高度 (风机高度)
+                      let baseY = clickedWindTurbine.position.y;
+                      
+                      // 2. 确定摄像机位置 (直接复用调试好的精灵位置)
+                      let camX = 350;
+                      let camY = baseY + 85;
+                      let camZ = -400;
+
+                      // 3. 执行移动
+                      this.moveCamera(
+                        camera.position,
+                        controls.target,
+                        // 相机位置：直接移动到设定的精灵位置
+                        { x: camX, y: camY, z: camZ },   
+                        
+                        // 目标位置：基于相机位置，各轴减去 20
+                        { x: camX +17, y: camY -20, z: camZ  },  
+                        
+                        () => {}
+                      );
+                      return; // 结束，不执行后续逻辑
+                  }
+
+                  // =============================================
+                  // 下面是普通有动画风机的通用逻辑 (保持不变)
+                  // =============================================
+                  const viewPositions = this.getViewPositions();
+                  let targetOffset = viewPositions.windTurbine.targetOffset;
+                  let cameraOffset = viewPositions.windTurbine.cameraOffset;
+
+                  this.moveCamera(
+                    camera.position,
+                    controls.target,
+                    {
+                      x: clickedWindTurbine.position.x + cameraOffset.x,
+                      y: clickedWindTurbine.position.y + cameraOffset.y,
+                      z: clickedWindTurbine.position.z + cameraOffset.z
+                    },
+                    {
+                      x: clickedWindTurbine.position.x + targetOffset.x,
+                      y: clickedWindTurbine.position.y + targetOffset.y,
+                      z: clickedWindTurbine.position.z + targetOffset.z
+                    },
+                    () => {}
+                  );
+                }
+              }
+            }
+          // 处理右侧光伏板点击
+          else if (parent.parent && parent.parent.name === 'rightSolarPanelGroup') {
+            if (isFind === false) {
+              isFind = true;
+              // 获取右侧光伏板组
+              let rightSolarPanelGroup = scene.getObjectByName('rightSolarPanelGroup');
+              this.modelAddBLN(rightSolarPanelGroup);
+              
+              // 使用集中配置的右侧光伏板视角位置
+              const viewPositions = this.getViewPositions();
+              this.moveCamera(
+                camera.position,
+                controls.target,
+                viewPositions.rightSolarPanel.cameraPosition,
+                viewPositions.rightSolarPanel.targetPosition,
+                () => {}
+              );
+            }
+          }
+          // 处理左侧光伏板点击
+          else if (parent.parent && parent.parent.name === 'leftSolarPanelGroup') {
+            if (isFind === false) {
+              isFind = true;
+              // 获取左侧光伏板组
+              let leftSolarPanelGroup = scene.getObjectByName('leftSolarPanelGroup');
+              this.modelAddBLN(leftSolarPanelGroup);
+              
+              // 使用集中配置的左侧光伏板视角位置
+              const viewPositions = this.getViewPositions();
+              this.moveCamera(
+                camera.position,
+                controls.target,
+                viewPositions.leftSolarPanel.cameraPosition,
+                viewPositions.leftSolarPanel.targetPosition,
+                () => {}
+              );
+            }
+          }
+          // 处理其他点击
+          else if (!isFind) {
+            this.modelRemoveBLN();
+            this.deviceDetailShow = false;
+            const viewPositions = this.getViewPositions();
+                this.moveCamera(
+                  camera.position,
+                  controls.target,
+                  viewPositions.default.cameraPosition,
+                  viewPositions.default.targetPosition,
+                  () => {}
+                );
           }
         }
       })
     },
+    
+    // 推送设备告警 (修复风机消失问题)
     pushEquipmentWarning(warningFlag) 
     {
       if (warningFlag) {
-        selectedObjects = [byqList[3]]
+        // 1. 获取变压器
+        let transformer = byqList[1];
+        
+        // 2. 获取无动画风机
+        let windTurbineGroup = scene.getObjectByName("windTurbineGroup");
+        let noAniWind = null;
+        
+        if (windTurbineGroup) {
+          noAniWind = windTurbineGroup.getObjectByName("windTurbineNoAnimation_1");
+        }
+
+        // 3. 构建高亮列表
+        let targets = [];
+        
+        // 加入变压器
+        if (transformer) targets.push(transformer);
+        
+        // 加入风机
+        // 【核心修复】：只添加最外层的 Group 对象即可，千万不要 traverse 添加子节点！
+        // OutlinePass 会自动递归处理子节点。重复添加会导致渲染冲突使模型消失。
+        if (noAniWind) {
+           targets.push(noAniWind);
+        }
+
+        // 4. 应用呼吸灯效果
+        selectedObjects = targets;
+        outlinePass.selectedObjects = selectedObjects;
+
       } else {
-        selectedObjects = []
+        // 关闭告警
+        selectedObjects = [];
+        outlinePass.selectedObjects = [];
       }
-      outlinePass.selectedObjects = selectedObjects// 给选中的线条和物体加发光特效
     },
+
+
+    // 切换告警设备详情视角 (0:变压器 <-> 1:无动画风机)
+    switchEquipmentDetail(index) {
+      // ==================================================
+      // 情况 1: 切换到 [变压器]
+      // ==================================================
+      if (index === 0) {
+        let transformer = byqList[1]; 
+        if (transformer) {
+          // 这里的坐标是之前调好的变压器特写坐标
+          this.moveCamera(
+            camera.position,
+            controls.target,
+            { x: -20.98, y: 10.12, z: 0.92 }, // 相机位置
+            { x: -20.98, y: 2.12, z: -6.08 }, // 目标位置
+            () => {}
+          );
+        }
+      }
+
+      // ==================================================
+      // 情况 2: 切换到 [无动画风机]
+      // ==================================================
+      else if (index === 1) {
+        // 这里的坐标是之前调好的风机特写坐标 (camX=350 那一组)
+        let camX = 320;
+        let camY = 190; // 风机高度70 + 85
+        let camZ = -400;
+
+        this.moveCamera(
+          camera.position,
+          controls.target,
+          { x: camX, y: camY, z: camZ },          // 相机位置
+          { x: camX + 17, y: camY - 20, z: camZ }, // 目标位置
+          () => {}
+        );
+      }
+    },
+    
+
     viewEquipmentDetail(warningFlag) 
     {
       if (warningFlag) {
@@ -504,73 +1084,145 @@ export default {
       } else {
         this.modelRemoveBLN()
         this.deviceDetailShow = false
+        var viewPositions = this.getViewPositions();
         this.moveCamera(
           camera.position,
           controls.target,
-          { x: -80, y: 70, z: 40 },
-          { x: -25, y: 5, z: 0 },
+          viewPositions.default.cameraPosition,
+          viewPositions.default.targetPosition,
           () => {}
         );
       }
     },
 
     // 漫游设置
-    roamCheck() 
-    {
+    // 漫游设置
+    // 漫游设置
+    // 漫游设置
+    // 漫游设置
+    // 漫游设置
+    // 漫游设置
+    roamCheck() {
+      // 1. 清空旧数据
       roamTweenEndCarm = [];
-      roamTweenEndCarm.push({x1: -47.46, y1: 1.45, z1: 6.01, x2: -25.23, y2: 1.45, z2: 6.01});//A
-      roamTweenEndCarm.push({x1: 34.92, y1: 1.45, z1: 6.01, x2: 47.16, y2: 1.45, z2: 6.01});
-      roamTweenEndCarm.push({x1: 39.27, y1: 1.45, z1: 8.29, x2: 39.30, y2: 1.45, z2: 4.67});
-      roamTweenEndCarm.push({x1: 38.94, y1: 1.45, z1: -15.85, x2: 38.94, y2: 1.45, z2: -17.77});
-      roamTweenEndCarm.push({x1: 40.81, y1: 1.45, z1: -18.95, x2: 38.31, y2: 1.45, z2: -18.70});
-      roamTweenEndCarm.push({x1: -38.12, y1: 1.45, z1: -18.95, x2: -47.36, y2: 1.45, z2: -18.09});
-      roamTweenEndCarm.push({x1: -42.01, y1: 1.45, z1: -19.70, x2: -41.91, y2: 1.45, z2: -17.70});
-      roamTweenEndCarm.push({x1: -41.86, y1: 1.45, z1: 1.82, x2: -41.83, y2: 1.45, z2: 3.29});
-      roamTweenEndCarm.push({x1: -44.21, y1: 1.45, z1: 5.97, x2: -41.51, y2: 1.45, z2: 5.61});
-      roamTweenEndCarm.push({x1: -80, y1: 70, z1: 40, x2: -25, y2: 5, z2: 0});
-      // 获取画布
-      var nowPosition = 
-      {
-        x1: camera.position.x, // 相机x
-        y1: camera.position.y, // 相机y
-        z1: camera.position.z, // 相机z
-        x2: controls.target.x, // 控制点的中心点x
-        y2: controls.target.y, // 控制点的中心点y
-        z2: controls.target.z // 控制点的中心点z
+
+      // ==========================================
+      // 第一阶段：变电站内部巡检 (保持不变)
+      // ==========================================
+      roamTweenEndCarm.push({x1: -47.46, y1: 1.45, z1: 6.01, x2: -25.23, y2: 1.45, z2: 6.01, time: 2000});
+      roamTweenEndCarm.push({x1: 34.92, y1: 1.45, z1: 6.01, x2: 47.16, y2: 1.45, z2: 6.01, time: 6000});
+      roamTweenEndCarm.push({x1: 39.27, y1: 1.45, z1: 8.29, x2: 39.30, y2: 1.45, z2: 4.67, time: 2000});
+      roamTweenEndCarm.push({x1: 38.94, y1: 1.45, z1: -15.85, x2: 38.94, y2: 1.45, z2: -17.77, time: 2500});
+      roamTweenEndCarm.push({x1: 40.81, y1: 1.45, z1: -18.95, x2: 38.31, y2: 1.45, z2: -18.70, time: 2000});
+      roamTweenEndCarm.push({x1: -38.12, y1: 1.45, z1: -18.95, x2: -47.36, y2: 1.45, z2: -18.09, time: 6000});
+      roamTweenEndCarm.push({x1: -42.01, y1: 1.45, z1: -19.70, x2: -41.91, y2: 1.45, z2: -17.70, time: 2000});
+      roamTweenEndCarm.push({x1: -41.86, y1: 1.45, z1: 1.82, x2: -41.83, y2: 1.45, z2: 3.29, time: 2500});
+      roamTweenEndCarm.push({x1: -44.21, y1: 1.45, z1: 5.97, x2: -41.51, y2: 1.45, z2: 5.61, time: 2000});
+      roamTweenEndCarm.push({x1: -47.46, y1: 50, z1: 6.01, x2: -25.23, y2: 5, z2: 6.01, time: 3000}); 
+
+      // ==========================================
+      // 第二阶段：左侧光伏板 (保持不变)
+      // ==========================================
+      roamTweenEndCarm.push({ x1: -100, y1: 60, z1: -100, x2: -50, y2: 0, z2: -250, time: 4000 });
+      roamTweenEndCarm.push({ x1: -100, y1: 60, z1: -400, x2: -50, y2: 0, z2: -250, time: 5000 });
+      roamTweenEndCarm.push({ x1: 100, y1: 60, z1: -400, x2: -50, y2: 0, z2: -250, time: 5000 });
+      roamTweenEndCarm.push({ x1: 100, y1: 60, z1: -100, x2: -50, y2: 0, z2: -250, time: 5000 });
+
+      // ==========================================
+      // 第三阶段：右侧光伏板 (保持不变)
+      // ==========================================
+      roamTweenEndCarm.push({ x1: -50, y1: 100, z1: 50, x2: -50, y2: 0, z2: 250, time: 4000 });
+      roamTweenEndCarm.push({ x1: -150, y1: 60, z1: 150, x2: -120, y2: 0, z2: 250, time: 4000 });
+      roamTweenEndCarm.push({ x1: -150, y1: 60, z1: 450, x2: -120, y2: 0, z2: 250, time: 5000 });
+      roamTweenEndCarm.push({ x1: 50, y1: 60, z1: 450, x2: -120, y2: 0, z2: 250, time: 5000 });
+      roamTweenEndCarm.push({ x1: 50, y1: 60, z1: 150, x2: -120, y2: 0, z2: 250, time: 5000 });
+
+      // ==========================================
+      // 第四阶段：风机全线巡检 (逐个打点，平稳飞行)
+      // ==========================================
+      const windTurbinePath = [
+        { x: 230, y: 50, z: 280 }, // #7
+        { x: 330, y: 20, z: 180 }, // #6
+        { x: 450, y: 45, z: 80 },  // #5
+        { x: 460, y: 45, z: -20 }, // #4
+        { x: 450, y: 50, z: -120 },// #3
+        { x: 480, y: 46, z: -220 },// #2
+        { x: 400, y: 50, z: -320 } // #1
+      ];
+
+      windTurbinePath.forEach((pos, index) => {
+        roamTweenEndCarm.push({
+          x1: 150, y1: 270, z1: pos.z + 50, 
+          x2: pos.x, y2: pos.y, z2: pos.z,
+          time: index === 0 ? 4000 : 2500 
+        });
+      });
+
+      // ==========================================
+      // 第五阶段：无动画风机 (平移到达 -> 暂停 -> 回家)
+      // ==========================================
+      
+      // 无动画风机真实坐标: x: -190, y: 70, z: -450, 实际上x轴的位置是有偏移的，对于有动画风机，这个位置是230
+      
+      // 1. 平稳移动到达无动画风机位置
+      roamTweenEndCarm.push({
+          x1: 150,   // 保持在 x=150 的航线上
+          y1: 270,   // 高度保持 200 (与之前风机一致，视野更好)
+          z1: -400,  // 摄像机停在风机侧前方 (风机z: -450, 偏移+50 = -400)
+          
+          x2: 230,  // 【修正】观察点 X 锁死无动画风机
+          y2: 190,    // 【修正】观察点 Y
+          z2: -400,  // 【修正】观察点 Z
+          time: 6000 // 慢慢飞过去
+      });
+
+      // 2. 【暂停】原地不动 2秒
+      // 关键：这里的坐标必须和上面一段的结束坐标完全一致
+      roamTweenEndCarm.push({
+          x1: 150,   
+          y1: 270,   
+          z1: -400,  
+          
+          x2: 230,  
+          y2: 190, 
+          z2: -400, 
+          time: 1400 // 悬停 1.4秒
+      });
+      // ==========================================
+      // 第六阶段：回程 (回到默认视角)
+      // ==========================================
+      var defaultCameraConfig = this.getDefaultCameraConfig();
+      roamTweenEndCarm.push({
+          x1: defaultCameraConfig.position.x, y1: defaultCameraConfig.position.y, z1: defaultCameraConfig.position.z, 
+          x2: defaultCameraConfig.target.x, y2: defaultCameraConfig.target.y, z2: defaultCameraConfig.target.z,
+          time: 4000
+      });
+        
+      // ------------------------------------------------
+      // 核心执行逻辑
+      // ------------------------------------------------
+      const cameraRe = camera;
+      const controlsRe = controls;
+      
+      let nowPosition = {
+        x1: camera.position.x, y1: camera.position.y, z1: camera.position.z,
+        x2: controls.target.x, y2: controls.target.y, z2: controls.target.z
+      };
+
+      let firstTween = this.roamItem(nowPosition, roamTweenEndCarm[0], roamTweenEndCarm[0].time, cameraRe, controlsRe, TWEEN.Easing.Linear.None);
+      let currentTween = firstTween;
+
+      for (let i = 1; i < roamTweenEndCarm.length; i++) {
+          let nextData = roamTweenEndCarm[i];
+          let nextTween = this.roamItem(nowPosition, nextData, nextData.time, cameraRe, controlsRe, TWEEN.Easing.Linear.None);
+          currentTween.chain(nextTween);
+          currentTween = nextTween;
       }
-      const cameraRe = camera
-      const controlsRe = controls
-      // 尾部参数为毫秒
-      const tweenA = this.roamItem(nowPosition, roamTweenEndCarm[0], 2000, cameraRe, controlsRe, TWEEN.Easing.Linear.None);
-      // 漫游点B
-      let tweenB = this.roamItem(nowPosition, roamTweenEndCarm[1], 6000, cameraRe, controlsRe, TWEEN.Easing.Linear.None);
-      // 漫游点C
-      let tweenC = this.roamItem(nowPosition, roamTweenEndCarm[2], 2000, cameraRe, controlsRe, TWEEN.Easing.Quadratic.InOut);
-      // 漫游点D
-      let tweenD = this.roamItem(nowPosition, roamTweenEndCarm[3], 2500, cameraRe, controlsRe, TWEEN.Easing.Linear.None);
-      // 漫游点E
-      let tweenE = this.roamItem(nowPosition, roamTweenEndCarm[4], 2000, cameraRe, controlsRe, TWEEN.Easing.Quadratic.InOut);
-      // 漫游点F
-      let tweenF = this.roamItem(nowPosition, roamTweenEndCarm[5], 6000, cameraRe, controlsRe, TWEEN.Easing.Linear.None);
-      // 漫游点G
-      let tweenG = this.roamItem(nowPosition, roamTweenEndCarm[6], 2000, cameraRe, controlsRe, TWEEN.Easing.Quadratic.InOut);
-      // 漫游点H
-      let tweenH = this.roamItem(nowPosition, roamTweenEndCarm[7], 2500, cameraRe, controlsRe, TWEEN.Easing.Linear.None);
-      // 漫游点I
-      let tweenI = this.roamItem(nowPosition, roamTweenEndCarm[8], 2000, cameraRe, controlsRe, TWEEN.Easing.Quadratic.InOut);
-      // 漫游点J
-      let tweenJ = this.roamItem(nowPosition, roamTweenEndCarm[9], 2000, cameraRe, controlsRe, TWEEN.Easing.Quadratic.InOut);
-      tweenA.chain(tweenB);
-      tweenB.chain(tweenC);
-      tweenC.chain(tweenD);
-      tweenD.chain(tweenE);
-      tweenE.chain(tweenF);
-      tweenF.chain(tweenG);
-      tweenG.chain(tweenH);
-      tweenH.chain(tweenI);
-      tweenI.chain(tweenJ);
-      tweenA.start()
+
+      firstTween.start();
     },
+
+
     realTimeMonitor(monitorFlag) 
     {
       if (monitorFlag) 
@@ -604,11 +1256,12 @@ export default {
     },
     cockpitControlView() 
     {
+      var viewPositions = this.getViewPositions();
       this.moveCamera(
           camera.position,
           controls.target,
-          { x: -80, y: 70, z: 40 },
-          { x: -25, y: 5, z: 0 },
+          viewPositions.default.cameraPosition,
+          viewPositions.default.targetPosition,
           () => {}
       );
     },
@@ -618,8 +1271,6 @@ export default {
     {
       // 创建底板
       this.addBaseplate();
-      // 创建草地面
-      this.addGrassGround();
       // 创建地面引导箭头
       this.addArrowModel();
       // 创建围墙
@@ -666,6 +1317,8 @@ export default {
       this.addWindTurbineModel();
       // 创建太阳能发电板
       this.addSolarPanelModel();
+      //地面
+      this.addGrassGround();
     },
 
     // 创建水泥地面底板
@@ -674,9 +1327,9 @@ export default {
       // 创建底板并添加到场景
       let planeGeometry = new THREE.BoxGeometry(300, 150, 1);
       // 地板贴图效果
-      let textureLoader = new THREE.TextureLoader(); // 纹理加载器
+      let textureLoader = new THREE.TextureLoader(this.loadingManager); // 纹理加载器
       let texture = textureLoader.load(
-        "/zhangyan-substation/images/水泥地面.png",
+        "/sunny-substation/images/水泥地面.png",
         function(texture) 
         {
           texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
@@ -688,25 +1341,26 @@ export default {
         map: texture
       });
       const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+      plane.name = "Baseplate_Floor"; // 添加名字，方便射线拾取
       plane.receiveShadow = true; // 地面接收阴影
       plane.rotation.x = -0.5 * Math.PI;
       plane.position.x = 0;
-      plane.position.y = -0.62;
+      plane.position.y = -0.50;
       plane.position.z = 0;
       scene.add(plane);
 
       // 横向路面贴图
-      let horizontalRoadTexture = new THREE.TextureLoader().load('/zhangyan-substation/images/马路背景.jpg');
+      let horizontalRoadTexture = new THREE.TextureLoader().load('/sunny-substation/images/马路背景.jpg');
       horizontalRoadTexture.wrapS = horizontalRoadTexture.wrapT = THREE.RepeatWrapping;
       horizontalRoadTexture.repeat.set(15, 1);
 
       // 纵向路面贴图（A1）
-      let lengthwaysRoadTextureA = new THREE.TextureLoader().load('/zhangyan-substation/images/马路背景.jpg');
+      let lengthwaysRoadTextureA = new THREE.TextureLoader().load('/sunny-substation/images/马路背景.jpg');
       lengthwaysRoadTextureA.wrapS = lengthwaysRoadTextureA.wrapT = THREE.RepeatWrapping;
       lengthwaysRoadTextureA.repeat.set(5, 1);
 
       // 纵向路面贴图（B1）
-      let lengthwaysRoadTextureB = new THREE.TextureLoader().load('/zhangyan-substation/images/马路背景.jpg');
+      let lengthwaysRoadTextureB = new THREE.TextureLoader().load('/sunny-substation/images/马路背景.jpg');
       lengthwaysRoadTextureB.wrapS = lengthwaysRoadTextureB.wrapT = THREE.RepeatWrapping;
       lengthwaysRoadTextureB.repeat.set(2.5, 1);
 
@@ -783,52 +1437,162 @@ export default {
     },
 
     // 创建草地面
-    addGrassGround() 
-    {
-        // 1. 创建一个非常大的平面几何体，作为草地
-      let planeGeometry = new THREE.PlaneGeometry(1000, 1000);
+   addGrassGround() {
+  // ============================================================
+  // 【可调参数集中区】- 所有参数都在这里，便于快速调整
+  // ============================================================
+  const config = {
+    // 模型加载
+    modelPath: '/sunny-substation/models/山地.glb',
+    targetMaxSize: 1000,        // 山地期望最大尺寸
+    manualScaleFactor: 1,     // 额外缩放系数
 
-      // 2. 加载草地贴图
-      let textureLoader = new THREE.TextureLoader();
-      let texture = textureLoader.load(
-        "/zhangyan-substation/images/crops_ground.jpg", // 需要确保路径正确
-        function(texture) {
-          // 3. 设置贴图重复 (Tiling)
-          texture.wrapS = THREE.RepeatWrapping;
-          texture.wrapT = THREE.RepeatWrapping;
-          
-          // 4. 调整重复次数，直到草地大小看起来合适
-          texture.repeat.set(100, 100); 
+    // 山地位置与旋转（世界坐标）
+    mountainPos: { x: 1500, y: -15, z: -180 },      // 山地中心位置（左后方，z 更负以靠后）
+    mountainRotationY: Math.PI / 2,                  // 山地 Y 轴旋转（-45度，使山峰指向右前方的风机处）
+    // 若想自动对齐到风机，将下面改为 true，否则用上面的手工角度
+    autoAlignToTurbine: false,
+
+    // 山地亮度调整（新增）
+    mountainIntensity: 2,   // 山地亮度缩放（1.0 = 原色，> 1.0 更亮，< 1.0 更暗；可调范围 0.5~2.0）
+
+    // 贴图草地平面
+    grassPlanePos: { x: -120, y: -0.15, z: 10 },  // 贴图草地中心位置（XYZ）- 注意 y 已改为 -0.15
+    grassPlaneWidth: 700,                           // 贴图草地 X 轴宽度
+    grassPlaneDepth: 1000,                           // 贴图草地 Z 轴深度
+    grassPlaneRotationY: 0,                         // 贴图草地 Y 轴旋转（弧度），通常为 0 或 Math.PI/2
+    grassPlaneY: -0.12,                             // 贴图草地高度（抬高 0.03 单位以避免 Z-fighting）
+
+    // 纹理 & 材质调参
+    grassTextureRepeatX: 1,   // X 方向平铺次数
+    grassTextureRepeatY: 1,  // Z 方向平铺次数
+    
+    // 材质颜色调整（用于还原原图颜色，避免过度亮化）
+    grassMetalness: 0,        // 金属度（0 = 非金属，更接近原纹理）
+    grassRoughness: 1.0,      // 粗糙度（1.0 = 完全粗糙，还原照片质感）
+    grassIntensity: 0.399,      // 纹理亮度缩放（0.8 = 较亮，还原草地自然亮度；可调范围 0.3~1.0）
+  };
+
+  // ============================================================
+  // 加载与放置山地模型
+  // ============================================================
+  const loader = new GLTFLoader(this.loadingManager);
+  loader.load(
+    config.modelPath,
+    (gltf) => {
+      const mountain = gltf.scene;
+      mountain.name = '山地';
+
+      // 1) 缩放山地
+      const box0 = new THREE.Box3().setFromObject(mountain);
+      const size0 = new THREE.Vector3();
+      box0.getSize(size0);
+      const maxDim = Math.max(size0.x, size0.y, size0.z);
+      const scale = maxDim > 0 ? (config.targetMaxSize / maxDim) : 1;
+      mountain.scale.setScalar(scale * config.manualScaleFactor);
+
+      // 2) 先旋转山地（绕自身中心的 Y 轴），再设置位置
+      //    这样保证旋转是原地自身旋转，不会绕世界原点转圈
+      if (config.autoAlignToTurbine) {
+        // 自动对齐逻辑（可选，暂时禁用）
+        // ... 自动寻找风机并对齐 ...
+      } else {
+        // 使用手工角度旋转（原地自身旋转）
+        mountain.rotation.y = config.mountainRotationY;
+      }
+
+      // 3) 设置山地位置（在旋转之后）
+      mountain.position.set(config.mountainPos.x, config.mountainPos.y, config.mountainPos.z);
+
+      // 4) 启用阴影并应用亮度调整
+      mountain.traverse((c) => {
+        if (c.isMesh && c.material) {
+          c.castShadow = true;
+          c.receiveShadow = true;
+          // 调整山地材质的亮度（通过颜色缩放）
+          if (c.material.color) {
+            c.material.color.multiplyScalar(config.mountainIntensity);
+          }
+          c.material.needsUpdate = true;
         }
-      );
-
-      // 5. 创建 PBR 材质，使其能被 HDR 正确照亮
-      const planeMaterial = new THREE.MeshStandardMaterial({
-        map: texture
       });
 
-      // 6. 创建网格
-      const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+      // 5) 添加到场景
+      if (!scene.getObjectByName('山地')) {
+        scene.add(mountain);
+      }
 
-      // 7. 旋转平面，使其"平躺"
-      plane.rotation.x = -0.5 * Math.PI;
+      // ============================================================
+      // 创建贴图草地平面（完全水平，不倾斜）
+      // ============================================================
+      const groundTex = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/crops_ground.jpg');
+      groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+      groundTex.repeat.set(config.grassTextureRepeatX, config.grassTextureRepeatY);
+      
+      // 应用颜色强度缩放（让纹理看起来更接近原图，避免过度亮化）
+      // 方案：使用 canvas 缩放纹理亮度，或者调整材质参数组合
+      // 这里使用材质参数调整以还原更自然的颜色
+      const groundMat = new THREE.MeshStandardMaterial({
+        map: groundTex,
+        side: THREE.DoubleSide,          // 两面可见
+        metalness: config.grassMetalness, // 降低金属感，还原照片质感
+        roughness: config.grassRoughness, // 提高粗糙度，还原自然感
+        toneMapped: true,                 // 启用 tone mapping（与场景环境保持一致）
+        depthTest: true,                  // 启用深度测试
+        polygonOffset: true,              // 启用多边形偏移，让此平面渲染在其他对象之上
+        polygonOffsetFactor: 2,           // 偏移因子
+        polygonOffsetUnits: 2,            // 偏移单位
+      });
+      
+      // 应用亮度缩放，让纹理更接近原图深绿色（而非过度亮化的黄绿色）
+      groundMat.color.multiplyScalar(config.grassIntensity);
 
-      // 8. 设置 Y 高度 (关键步骤！)
-      // 水泥平台顶部在 y = -0.12 左右
-      // 马路在 y = 0.1 左右
-      // 把草地放在 y = -0.15，刚好在水泥平台下面一点点
-      plane.position.y = -0.15; 
+      // 创建平面几何体（默认在 XY 平面，法向指向 +Z）
+      const groundGeo = new THREE.PlaneGeometry(config.grassPlaneWidth, config.grassPlaneDepth);
 
-      // 9. 添加到场景
-      scene.add(plane);
+      // 创建网格
+      const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+
+      // 旋转平面使其平躺在 XZ 平面（法向朝上，指向 +Y）
+      groundMesh.rotation.x = -Math.PI / 2;
+
+      // 可选：Y 轴旋转（如果需要旋转纹理方向）
+      if (config.grassPlaneRotationY !== 0) {
+        groundMesh.rotation.y = config.grassPlaneRotationY;
+      }
+
+      // 设置位置（使用配置中的 XYZ，其中 Y 应与 grassPlaneY 一致以确保水平）
+      groundMesh.position.set(
+        config.grassPlanePos.x,
+        config.grassPlaneY,  // 确保使用配置的 Y 值，不是 grassPlanePos.y
+        config.grassPlanePos.z
+      );
+
+      groundMesh.receiveShadow = true;
+      groundMesh.castShadow = false;  // 平面不投射阴影（可改为 true 如果需要）
+      groundMesh.name = '山地_草地区域';
+
+      scene.add(groundMesh);
+
+      console.log('山地与贴图草地加载完成');
+      console.log('山地位置:', config.mountainPos);
+      console.log('山地旋转 Y (弧度):', config.mountainRotationY);
+      console.log('贴图草地位置:', { x: config.grassPlanePos.x, y: config.grassPlaneY, z: config.grassPlanePos.z });
+      console.log('贴图草地大小:', config.grassPlaneWidth, 'x', config.grassPlaneDepth);
     },
-
+    undefined,
+    (err) => {
+      console.error('加载山地模型失败:', err);
+    }
+  );
+},
+    
     // 创建围墙
     addWell() 
     {
       // 外墙
       let outsideWallArray = [];
-      let wallTexture = new THREE.TextureLoader().load('/zhangyan-substation/images/围墙.png')
+      let wallTexture = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/围墙.png')
       wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
       wallTexture.repeat.set(5, 1);
       outsideWallArray.push(new THREE.MeshStandardMaterial({map: wallTexture}));  //前
@@ -872,14 +1636,14 @@ export default {
     // 创建房子模型（配电室、主控室、安保室等）
     addHouseModel() 
     {
-      let gloader = new GLTFLoader();
-      let fbxLoader = new FBXLoader();
+      let gloader = new GLTFLoader(this.loadingManager);
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let houseGroup = new THREE.Group();
       houseGroup.name = "houseGroup";
 
       // 警卫室
-      gloader.load(`/zhangyan-substation/models/警卫室/scene.gltf`, gltf => 
+      gloader.load(`/sunny-substation/models/警卫室/scene.gltf`, gltf => 
       {
         gltf.scene.name = "警卫室";
         gltf.scene.scale.set(0.8, 0.8, 0.8);
@@ -890,7 +1654,7 @@ export default {
       });
 
       // 警卫
-      gloader.load(`/zhangyan-substation/models/警卫人员/scene.gltf`, gltf => 
+      gloader.load(`/sunny-substation/models/警卫人员/scene.gltf`, gltf => 
       {
         gltf.scene.name = "警卫人员";
         gltf.scene.scale.set(1.5, 1.5, 1.5);
@@ -901,7 +1665,7 @@ export default {
       });
 
       // 配电室
-      gloader.load(`/zhangyan-substation/models/配电室.glb`, gltf => 
+      gloader.load(`/sunny-substation/models/配电室.glb`, gltf => 
       {
         gltf.scene.name = "配电室";
         gltf.scene.scale.set(0.08, 0.08, 0.08);
@@ -912,7 +1676,7 @@ export default {
       });
 
       // 主控室
-      gloader.load(`/zhangyan-substation/models/主控室.glb`, gltf => 
+      gloader.load(`/sunny-substation/models/主控室.glb`, gltf => 
       {
         gltf.scene.name = "主控室";
         gltf.scene.scale.set(0.08, 0.08, 0.08);
@@ -922,8 +1686,88 @@ export default {
         houseGroup.add(gltf.scene);
       });
 
+      // 新增建筑 factory3 (FBX模型)右边那个
+      fbxLoader.load(`/sunny-substation/models/factory3.fbx`, model => 
+      {
+        model.name = "factory3";
+        model.scale.set(0.00129, 0.00129, 0.00129);
+        model.position.set(90, 12, 30); // 可自由调整x, y, z位置
+        // 设置旋转
+        model.rotation.y = 1 * Math.PI;
+        model.rotation.x = 0.5 * Math.PI;
+        
+        // 增加建筑反光，提高亮度
+        model.traverse(function(child) {
+          if (child.isMesh) {
+            // 调整材质属性，提高反光度
+            if (!child.material) return;
+            
+            // 检查是否为材质数组
+            if (Array.isArray(child.material)) {
+              child.material.forEach(material => {
+                // 提高金属度，降低粗糙度
+                material.metalness = 0.8; // 金属度：0-1，越高越反光
+                material.roughness = 0.2; // 粗糙度：0-1，越低越光滑
+                material.emissive.set(0x222222); // 添加自发光，提高亮度
+                material.emissiveIntensity = 1; // 自发光强度
+                material.needsUpdate = true;
+              });
+            } else {
+              // 提高金属度，降低粗糙度
+              child.material.metalness = 0.8; // 金属度：0-1，越高越反光
+              child.material.roughness = 0.2; // 粗糙度：0-1，越低越光滑
+              child.material.emissive.set(0x222222); // 添加自发光，提高亮度
+              child.material.emissiveIntensity = 1; // 自发光强度
+              child.material.needsUpdate = true;
+            }
+          }
+        });
+        
+        houseGroup.add(model);
+      });
+
+      // 新增建筑 factory4 (FBX模型)左边那个
+      fbxLoader.load(`/sunny-substation/models/factory4.fbx`, model => 
+      {
+        model.name = "factory4";
+        model.scale.set(0.0015, 0.0015, 0.0015);
+        model.position.set(90, 9, -20); // 可自由调整x, y, z位置
+        // 设置旋转
+        model.rotation.y = 1 * Math.PI;
+        model.rotation.x = 0.5 * Math.PI;
+        
+        // 增加建筑反光，提高亮度
+        model.traverse(function(child) {
+          if (child.isMesh) {
+            // 调整材质属性，提高反光度
+            if (!child.material) return;
+            
+            // 检查是否为材质数组
+            if (Array.isArray(child.material)) {
+              child.material.forEach(material => {
+                // 提高金属度，降低粗糙度
+                material.metalness = 0.8; // 金属度：0-1，越高越反光
+                material.roughness = 0.2; // 粗糙度：0-1，越低越光滑
+                material.emissive.set(0x222222); // 添加自发光，提高亮度
+                material.emissiveIntensity = 0.5; // 自发光强度
+                material.needsUpdate = true;
+              });
+            } else {
+              // 提高金属度，降低粗糙度
+              child.material.metalness = 0.8; // 金属度：0-1，越高越反光
+              child.material.roughness = 0.2; // 粗糙度：0-1，越低越光滑
+              child.material.emissive.set(0x222222); // 添加自发光，提高亮度
+              child.material.emissiveIntensity = 0.5; // 自发光强度
+              child.material.needsUpdate = true;
+            }
+          }
+        });
+        
+        houseGroup.add(model);
+      });
+
       // 摄像头
-      fbxLoader.load(`/zhangyan-substation/models/摄像头.fbx`, gltf => 
+      fbxLoader.load(`/sunny-substation/models/摄像头.fbx`, gltf => 
       {
         gltf.rotation.z = -Math.PI;
         gltf.position.set(-60.7, 1.8, 8.1);
@@ -939,12 +1783,12 @@ export default {
     // 创建高压电塔模型
     addHighVoltageTowerModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let powerPylonGroup = new THREE.Group();
       powerPylonGroup.name = "highVoltageTower";
 
-      fbxLoader.load(`/zhangyan-substation/models/高压电塔.FBX`, fbx => {
+      fbxLoader.load(`/sunny-substation/models/高压电塔.FBX`, fbx => {
         //当fbx这个函数前面只有一个参数时，括号可以省略
         //fbxloder起到加载模型，fbx这个自定义的名字是表示将加载后的模型传递到这个函数
         //然后就可以同过fbx来操作这个模型了
@@ -973,12 +1817,12 @@ export default {
     // 创建电力桥塔
     addPowerPylonModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let powerPylonGroup = new THREE.Group();
       powerPylonGroup.name = "firstPowerPylonGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/1. 最开始架子.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/1. 最开始架子.FBX`, fbx => 
       {
         fbx.scale.set(0.0005, 0.0005, 0.0005);
         let powerPylonModel = fbx;
@@ -1007,12 +1851,12 @@ export default {
     // 创建最两侧的柱子
     addBilateralPostsModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let postsGroup = new THREE.Group();
       postsGroup.name = "lastPostsGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/3. 柱子.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/3. 柱子.FBX`, fbx => 
       {
         fbx.scale.set(0.0003, 0.0003, 0.0003);
         let postsModel = fbx;
@@ -1052,12 +1896,12 @@ export default {
     // 创建最开始的设备
     addFirstEquipmentModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let equipmentGroup = new THREE.Group();
       equipmentGroup.name = "equipmentOneGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/2. 柱子旁边的设备.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/2. 柱子旁边的设备.FBX`, fbx => 
       {
         fbx.scale.set(0.00055, 0.00055, 0.00055);
         fbx.rotation.x = 0.5 * Math.PI;
@@ -1080,12 +1924,12 @@ export default {
     // 创建最开始的管子
     addFirstPipesModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let pipesGroup = new THREE.Group();
       pipesGroup.name = "pipesGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/4. 连接柱子旁边设备的管子.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/4. 连接柱子旁边设备的管子.FBX`, fbx => 
       {
         let pipesModel = fbx;
         let model1 = pipesModel.clone();
@@ -1103,12 +1947,12 @@ export default {
     // 创建最开始的设备（反）
     addFirstEquipmentAgainstModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let equipmentGroup = new THREE.Group();
       equipmentGroup.name = "equipmentOneAgainstGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/5. 柱子旁边的设备（反）.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/5. 柱子旁边的设备（反）.FBX`, fbx => 
       {
         fbx.scale.set(0.00055, 0.00055, 0.00055);
         let postsModel = fbx;
@@ -1134,7 +1978,7 @@ export default {
         {
           let model1XOffset = index * 11.8;
           this.createDeviceIndicator({
-              img: '/zhangyan-substation/images/tk-blue.png',
+              img: '/sunny-substation/images/tk-blue.png',
               width: 350,
               height: 90,
               txt: (index + 1) + '#550kV I线高抗',
@@ -1157,12 +2001,12 @@ export default {
     // 创建最开始的柱子（反）
     addFirstPostsAgainstModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let postsGroup = new THREE.Group();
       postsGroup.name = "postsAgainstGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/3. 柱子.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/3. 柱子.FBX`, fbx => 
       {
         fbx.scale.set(0.0003, 0.0003, 0.0003);
         let postsModel = fbx;
@@ -1192,12 +2036,12 @@ export default {
     // 创建连接管
     addLinkPopesModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let pipesGroup = new THREE.Group();
       pipesGroup.name = "linkPipesGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/12. 倒数第二个架子下设备的管子.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/12. 倒数第二个架子下设备的管子.FBX`, fbx => 
       {
         let pipesModel1 = fbx.clone();
         pipesModel1.scale.set(0.000037, 0.00025, 0.00025);
@@ -1251,12 +2095,12 @@ export default {
     // 创建变压器桥塔
     addTransformerPylonModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let transformerPylonGroup = new THREE.Group();
       transformerPylonGroup.name = "transformerPylonGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/7. 变压器上面的架子.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/7. 变压器上面的架子.FBX`, fbx => 
       {
         fbx.scale.set(0.0007, 0.0007, 0.0007);
         let transformerPylonModel = fbx;
@@ -1277,12 +2121,12 @@ export default {
     // 创建变压器
     addTransformerModel() 
     {
-      let gloader = new GLTFLoader();
+      let gloader = new GLTFLoader(this.loadingManager);
       // 创建group
       let transformerGroup = new THREE.Group();
       transformerGroup.name = "transformerGroup";
       // let list = []
-      gloader.load(`/zhangyan-substation/models/8. 变压器.glb`, gltf => 
+      gloader.load(`/sunny-substation/models/8. 变压器.glb`, gltf => 
       {
         gltf.scene.scale.set(0.9, 0.9, 0.9);
         gltf.scene.rotation.y = -0.5 * Math.PI;
@@ -1303,7 +2147,7 @@ export default {
         {
           let model1XOffset = index * 11.8;
           this.createDeviceIndicator({
-              img: '/zhangyan-substation/images/tk-blue.png',
+              img: '/sunny-substation/images/tk-blue.png',
               width: 200,
               height: 90,
               txt: (index + 1) + '#变压器',
@@ -1326,12 +2170,12 @@ export default {
     // 创建转换房
     addTransitionHouseModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let houseGroup = new THREE.Group();
       houseGroup.name = "houseGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/6. 屋子1.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/6. 屋子1.FBX`, fbx => 
       {
         fbx.scale.set(0.0013, 0.0013, 0.0013);
         fbx.rotation.x = 0.5 * Math.PI;
@@ -1352,12 +2196,12 @@ export default {
     // 创建最后的设备（输出端）
     addLastEquipmentModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let equipmentGroup = new THREE.Group();
       equipmentGroup.name = "lastEquipmentOneGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/13. 最后的设备.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/13. 最后的设备.FBX`, fbx => 
       {
         fbx.scale.set(0.0008, 0.0008, 0.0008);
         fbx.rotation.x = 0.5 * Math.PI;
@@ -1379,12 +2223,12 @@ export default {
     // 创建最后的管子
     addLastPipesModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let pipesGroup = new THREE.Group();
       pipesGroup.name = "lastPipesGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/12. 倒数第二个架子下设备的管子.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/12. 倒数第二个架子下设备的管子.FBX`, fbx => 
       {
         let pipesModel = fbx;
 
@@ -1401,12 +2245,12 @@ export default {
     // 创建最后的设备（反）
     addLastEquipmentAgainstModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let equipmentGroup = new THREE.Group();
       equipmentGroup.name = "lastEquipmentOneAgainstGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/11. 倒数第二个架子下的设备.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/11. 倒数第二个架子下的设备.FBX`, fbx => 
       {
         fbx.scale.set(0.0008, 0.0008, 0.0008);
         fbx.rotation.x = 0.5 * Math.PI;
@@ -1429,12 +2273,12 @@ export default {
     // 创建倒数第二道的柱子（反）（输出端）
     addLastTwoPostsModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let postsGroup = new THREE.Group();
       postsGroup.name = "lastTwoPostsGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/3. 柱子.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/3. 柱子.FBX`, fbx => 
       {
         fbx.scale.set(0.0003, 0.0003, 0.0003);
         let postsModel = fbx;
@@ -1464,12 +2308,12 @@ export default {
     // 创建断路器
     addDisconnectorModel() 
     {
-      let gloader = new GLTFLoader();
+      let gloader = new GLTFLoader(this.loadingManager);
       // 创建group
       let transformerGroup = new THREE.Group();
       transformerGroup.name = "transformerGroup";
 
-      gloader.load(`/zhangyan-substation/models/断路器.glb`, gltf => 
+      gloader.load(`/sunny-substation/models/断路器.glb`, gltf => 
       {
         gltf.scene.scale.set(0.12, 0.12, 0.12);
         let transformerPylonModel = gltf.scene;
@@ -1488,7 +2332,7 @@ export default {
         {
           let model1XOffset = index * 11.8;
           this.createDeviceIndicator({
-              img: '/zhangyan-substation/images/tk-blue.png',
+              img: '/sunny-substation/images/tk-blue.png',
               width: 280,
               height: 90,
               txt: (index + 1) + '# 隔离开关',
@@ -1511,12 +2355,12 @@ export default {
     // 创建倒数第二道的电力桥塔（输出端）
     addLastTwoPowerPylonModel() 
     {
-      let fbxLoader = new FBXLoader();
+      let fbxLoader = new FBXLoader(this.loadingManager);
       // 创建group
       let transformerPylonGroup = new THREE.Group();
       transformerPylonGroup.name = "lastTransformerPylonGroup";
 
-      fbxLoader.load(`/zhangyan-substation/models/10. 倒数第二个架子.FBX`, fbx => 
+      fbxLoader.load(`/sunny-substation/models/10. 倒数第二个架子.FBX`, fbx => 
       {
         fbx.scale.set(0.0007, 0.0007, 0.0007);
         let transformerPylonModel = fbx;
@@ -1934,120 +2778,213 @@ export default {
         _wireGroup.add(lineA);
     },
 
-    // 创建风力发电机
-    addWindTurbineModel() 
-    {
-      let gloader = new GLTFLoader();
-      let windTurbineGroup = new THREE.Group();
-      windTurbineGroup.name = "windTurbineGroup";
-      gloader.load(`/zhangyan-substation/models/风机(带动画).glb`, gltf => 
-      { // <-- 模型文件
-          
-        // 注意：gltf 里现在有两样东西：
-        // 1. gltf.scene (模型)
-        // 2. gltf.animations (动画剪辑数组)
-        
-        // 检查一下它有没有动画
-        let hasAnimations = gltf.animations && gltf.animations.length > 0;
-        for (let i = 0; i < 7; i++) {//设置风机数量
-          // 克隆模型 (注意：clone() 不会自动克隆动画，我们需要为每个克隆体创建新的 mixer)
-          let model = gltf.scene.clone();
-          model.scale.set(0.009, 0.009, 0.009); // 调整大小
-          let zPos = -320 + (i * 100);//调整Z轴位置和风机间距
-          model.position.set(180, 0, zPos);// 设置风机整体位置
-          model.rotation.y = Math.PI * 1.5;
-          windTurbineGroup.add(model);
-          
-          // --- 如果有动画，就播放它 ---
-          if (hasAnimations) 
-          {
-            // 1. 为这个克隆体创建一个动画混合器
-            let mixer = new THREE.AnimationMixer(model);
-            
-            // 2. 找到第一个动画剪辑 (假设只有一个动画剪辑)
-            let clip = gltf.animations[0];
-            let action = mixer.clipAction(clip);
-            
-            // 3. 播放动画
-            action.play();
-            
-            // 4. 把这个 mixer 存起来，在 render() 循环里更新它
-            windTurbineMixers.push(mixer);
-          }
-         }
-       });
-           scene.add(windTurbineGroup);
- },
+    // 风机位置配置函数（放在风机创建前，便于快速调整）
+    configureWindTurbinePositions() {
+      // 返回一个位置数组，每项 { x, y, z, rotationY }
+      // 默认示例：7 台风机，按行排列，位置可直接编辑
+      return [
+        { x: 400, y: 50, z: -320, rotationY: Math.PI * 1.5 },
+        { x: 480, y: 46, z: -220, rotationY: Math.PI * 1.5 },
+        { x: 450, y: 50, z: -120, rotationY: Math.PI * 1.5 },
+        { x: 460, y: 45, z: -20,  rotationY: Math.PI * 1.5 },
+        { x: 450, y: 45, z: 80,   rotationY: Math.PI * 1.5 },
+        { x: 330, y: 20, z: 180,  rotationY: Math.PI * 1.5 },
+        { x: 230, y: 50, z: 280,  rotationY: Math.PI * 1.5 }
+      ];
+    },
+    configureWindTurbineNoAnimationPositions() {
+      return [
+        { x: -190, y: 70, z: -450, rotationY: Math.PI * 1.5 },  
+      ];
+    },
 
-   // 创建光伏板
-    addSolarPanelModel() 
-    {
-      // 导入模型用的是 GLTFLoader 和 .glb，所以需要保持一致
-      let gloader = new GLTFLoader(); 
-      let solarPanelGroup = new THREE.Group();
-      solarPanelGroup.name = "solarPanelGroup";
+   // addWindTurbineModel 方法,添加风力发电机模型
+addWindTurbineModel() {
+  let gloader = new GLTFLoader(this.loadingManager);
+  let windTurbineGroup = new THREE.Group();
+  windTurbineGroup.name = "windTurbineGroup";
 
-      gloader.load(`/zhangyan-substation/models/光伏板.glb`, gltf => 
-      { //
+  // 坐标配置
+  const positions = [
+    { x: 400, y: 60, z: -320, rotationY: Math.PI * 1.5 },
+    { x: 480, y: 52, z: -220, rotationY: Math.PI * 1.5 },
+    { x: 470, y: 50, z: -50, rotationY: Math.PI * 1.5 },
+    { x: 460, y: 45, z: 90,  rotationY: Math.PI * 1.5 },
+    { x: 450, y: 50, z: 250,   rotationY: Math.PI * 1.5 },
+    { x: 230, y: 60, z: 320,  rotationY: Math.PI * 1.5 },
+    { x: 400, y: 60, z: 380,  rotationY: Math.PI * 1.5 },
+    { x: 330, y: 60, z: -380, rotationY: Math.PI * 1.5 } 
+  ];
 
-        let panelModel = gltf.scene; 
-        
-        // 1. 修正 Scale (改成一个可见的大小，比如 1)
-        panelModel.scale.set(5, 5, 5); // (根据模型大小再调整)
+  gloader.load(`/sunny-substation/models/风机10.glb`, gltf => {
+    
+    // 清空旧数据 (防止热更新堆叠)
+    windTurbineDataList = [];
 
-        // 2. 增加间距 (把 10 增加到 25 米，避免重叠)
-        let spacing = 30; // 间距 25 米
-        
-        // 3. 循环次数 (i = 排 / j = 列)
-        let rows = 10; // 比如 5 排
-        let columns = 10; // 每排 4 个
-
-        // --- 1. 添加右侧的光伏板 (对应右侧红框) ---
-        for (let i = 0; i < rows; i++) 
-        { 
-          for (let j = 0; j < columns; j++) 
-          {
-            let model = panelModel.clone();
-            
-            // 放在 x = 170 (东墙 x=150 外面)
-            // z 坐标从 0 开始向后排
-            model.position.set(-120 + j * spacing, 0, -140 - i * spacing);
-            
-            // 旋转: 朝向左前方 (摄像机)
-            model.rotation.y = Math.PI * 1; 
-            
-            solarPanelGroup.add(model);
-          }
-        }
-
-        // --- 2. 添加左侧的光伏板 (对应左侧红框) ---
-        for (let i = 0; i < rows; i++) 
-        { 
-          for (let j = 0; j < columns; j++) 
-          {
-            let model = panelModel.clone();
-            
-            // 放在 x = -170 (西墙 x=-150 外面)
-            // z 坐标从 0 开始向后排
-            model.position.set(150 - j * spacing, 0, 380 - i * spacing);
-            
-            // 旋转: 朝向右前方 (摄像机)
-            model.rotation.y = Math.PI * 1; 
-            
-            solarPanelGroup.add(model);
-          }
-        }
-      });
+    positions.forEach((pos, i) => {
+      let model = gltf.scene.clone();
+      let index = i + 1;
       
-      // 4. 确保添加到场景 (你上次的代码片段里没有这行)
-      scene.add(solarPanelGroup); 
+      // ============================================
+      // ============================================
+      model.scale.set(200, 200, 200); 
+      
+      model.position.set(pos.x, pos.y, pos.z);
+      model.rotation.y = pos.rotationY;
+      model.name = `windTurbine_${index}`;
+
+      // 扇叶位于父组件转轴"Rotor"下，所以直接旋转rotor即可
+      let rotor = model.getObjectByName("Rotor");
+      
+      // 将数据存入全局变量 (非 data)
+      windTurbineDataList.push({
+        id: index,
+        mesh: model,
+        rotor: rotor,
+        //风机初始速度设定
+        speed: 0,// + Math.random() * 0.01, // 稍微快一点以便观察
+        isRunning: true
+      });
+
+      windTurbineGroup.add(model);
+      
+      // 更新全局查找数组 
+      windTurbineClones.push(model);
+
+      // 精灵标签 (保持不变)
+      this.createDeviceIndicator({
+          img: '/sunny-substation/images/tk-blue.png',
+          width: 320,
+          height: 90,
+          txt: `${index}# 风电机组`,
+          status: '运行中',
+          txtPaddingX: 30,
+          txtPaddingY: 58
+      }).then((panelMate) => {
+        let panelMesh = new THREE.Sprite(panelMate);
+        // 标签高度比风机高150
+        panelMesh.position.set(pos.x, pos.y + 150, pos.z-20); 
+        panelMesh.scale.set(150, 100, 1);
+        scene.add(panelMesh);
+      });
+    });
+    
+    scene.add(windTurbineGroup);
+  });
+},
+    
+
+   // 创建光伏板（带精灵标签）
+    addSolarPanelModel() {
+      let gloader = new GLTFLoader(this.loadingManager);
+      
+      let rightSolarPanelGroup = new THREE.Group();
+      rightSolarPanelGroup.name = "rightSolarPanelGroup";
+      
+      let leftSolarPanelGroup = new THREE.Group();
+      leftSolarPanelGroup.name = "leftSolarPanelGroup";
+
+      gloader.load(`/sunny-substation/models/光伏板.glb`, gltf => { 
+        let panelModel = gltf.scene; 
+        // ================== 【新增代码 START】 ==================
+    // 遍历模型中的每一个网格，开启各向异性过滤
+    panelModel.traverse((child) => {
+      if (child.isMesh) {
+        // 1. 检查是否有贴图
+        if (child.material.map) {
+          // 获取显卡支持的最大各向异性过滤等级 (通常是 16x)
+          // 这一步能极大地提升远距离倾斜视角的清晰度
+          child.material.map.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          
+          // 2. 确保 mipmaps 开启 (解决远距离闪烁)
+          child.material.map.minFilter = THREE.LinearMipmapLinearFilter;
+          child.material.map.magFilter = THREE.LinearFilter;
+          
+          // 3. 强制更新材质
+          child.material.needsUpdate = true;
+        }
+        
+        // 可选：如果光伏板反光太强导致看不清，可以适当降低粗糙度或金属度
+        // child.material.roughness = 0.8; 
+      }
+    });
+    // ================== 【新增代码 END】 ==================
+        panelModel.scale.set(5, 5, 5); 
+        let spacing = 30; 
+        let rows = 10; 
+        let columns = 10; 
+
+        // --- 1. 右侧光伏板 (南侧) ---
+        for (let i = 0; i < rows; i++) { 
+          for (let j = 0; j < columns; j++) {
+            let model = panelModel.clone();
+            model.position.set(-120 + j * spacing, 0, -140 - i * spacing);
+            model.rotation.y = Math.PI * 1; 
+            rightSolarPanelGroup.add(model);
+          }
+        }
+
+        // --- 2. 左侧光伏板 (北侧) ---
+        for (let i = 0; i < rows; i++) { 
+          for (let j = 0; j < columns; j++) {
+            let model = panelModel.clone();
+            model.position.set(50 - j * spacing, 0, 380 - i * spacing);
+            model.rotation.y = Math.PI * 1; 
+            leftSolarPanelGroup.add(model);
+          }
+        }
+        
+        scene.add(rightSolarPanelGroup);
+        scene.add(leftSolarPanelGroup);
+
+        // ========================================
+        // 【新增】添加光伏阵列的精灵标签
+        // ========================================
+
+        // 1. 右侧光伏阵列标签 (根据阵列坐标估算中心位置)
+        // 右侧z大概在 -140 到 -400 之间，中心取 -280
+        this.createDeviceIndicator({
+            img: '/sunny-substation/images/tk-blue.png',
+            width: 350,
+            height: 90,
+            txt: '一期光伏阵列',
+            status: '并网',
+            txtPaddingX: 30,
+            txtPaddingY: 58
+        }).then((panelMate) => {
+          let panelMesh = new THREE.Sprite(panelMate);
+          // 设置在阵列中心上方 30米处
+          panelMesh.position.set(20, 30, -280); 
+          panelMesh.scale.set(130, 80, 1); // 标签大一点，醒目
+          scene.add(panelMesh);
+        });
+
+        // 2. 左侧光伏阵列标签
+        // 左侧z大概在 380 到 100 之间，中心取 240
+        this.createDeviceIndicator({
+            img: '/sunny-substation/images/tk-blue.png',
+            width: 350,
+            height: 90,
+            txt: '二期光伏阵列',
+            status: '并网',
+            txtPaddingX: 30,
+            txtPaddingY: 58
+        }).then((panelMate) => {
+          let panelMesh = new THREE.Sprite(panelMate);
+          // 设置在阵列中心上方
+          panelMesh.position.set(-90, 30, 240);
+          panelMesh.scale.set(130, 80, 1);
+          scene.add(panelMesh);
+        });
+
+      });
     },
 
     // 创建引导箭头
     addArrowModel() 
     {
       // 主干道箭头
-      mainArrowsRoadTexture = new THREE.TextureLoader().load('/zhangyan-substation/images/箭头.png');
+      mainArrowsRoadTexture = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
       mainArrowsRoadTexture.wrapS = mainArrowsRoadTexture.wrapT = THREE.RepeatWrapping;
       mainArrowsRoadTexture.repeat.set(1, 15);
 
@@ -2064,7 +3001,7 @@ export default {
 
 
       // A1干道（纵向）
-      arrowsRoadTextureA1 = new THREE.TextureLoader().load('/zhangyan-substation/images/箭头.png');
+      arrowsRoadTextureA1 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
       arrowsRoadTextureA1.wrapS = arrowsRoadTextureA1.wrapT = THREE.RepeatWrapping;
       arrowsRoadTextureA1.repeat.set(1, 5);
       let a1RoadPoint = new THREE.MeshBasicMaterial();
@@ -2078,7 +3015,7 @@ export default {
       a1RoadMesh.rotation.z = 1 * Math.PI;
 
       // A2干道（横向）
-      arrowsRoadTextureA2 = new THREE.TextureLoader().load('/zhangyan-substation/images/箭头.png');
+      arrowsRoadTextureA2 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
       arrowsRoadTextureA2.wrapS = arrowsRoadTextureA2.wrapT = THREE.RepeatWrapping;
       arrowsRoadTextureA2.repeat.set(1, 15);
       let a2RoadPoint = new THREE.MeshBasicMaterial();
@@ -2092,7 +3029,7 @@ export default {
       a2RoadMesh.rotation.z = 1.5 * Math.PI;
 
       // A3干道（纵向）
-      arrowsRoadTextureA3 = new THREE.TextureLoader().load('/zhangyan-substation/images/箭头.png');
+      arrowsRoadTextureA3 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
       arrowsRoadTextureA3.wrapS = arrowsRoadTextureA3.wrapT = THREE.RepeatWrapping;
       arrowsRoadTextureA3.repeat.set(1, 5);
       let a3RoadPoint = new THREE.MeshBasicMaterial();
@@ -2106,7 +3043,7 @@ export default {
       a3RoadMesh.rotation.z = 2 * Math.PI;
 
       // B1干道（纵向）
-      arrowsRoadTextureB1 = new THREE.TextureLoader().load('/zhangyan-substation/images/箭头.png');
+      arrowsRoadTextureB1 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
       arrowsRoadTextureB1.wrapS = arrowsRoadTextureB1.wrapT = THREE.RepeatWrapping;
       arrowsRoadTextureB1.repeat.set(1, 1.5);
       let b1RoadPoint = new THREE.MeshBasicMaterial();
@@ -2120,7 +3057,7 @@ export default {
       b1RoadMesh.rotation.z = 2 * Math.PI;
 
       // B2干道（横向）
-      arrowsRoadTextureB2 = new THREE.TextureLoader().load('/zhangyan-substation/images/箭头.png');
+      arrowsRoadTextureB2 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
       arrowsRoadTextureB2.wrapS = arrowsRoadTextureB2.wrapT = THREE.RepeatWrapping;
       arrowsRoadTextureB2.repeat.set(1, 15);
       let b2RoadPoint = new THREE.MeshBasicMaterial();
@@ -2134,7 +3071,7 @@ export default {
       b2RoadMesh.rotation.z = 1.5 * Math.PI;
 
       // B3干道（纵向）
-      arrowsRoadTextureB3 = new THREE.TextureLoader().load('/zhangyan-substation/images/箭头.png');
+      arrowsRoadTextureB3 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
       arrowsRoadTextureB3.wrapS = arrowsRoadTextureB3.wrapT = THREE.RepeatWrapping;
       arrowsRoadTextureB3.repeat.set(1, 1.5);
       let b3RoadPoint = new THREE.MeshBasicMaterial();
@@ -2184,31 +3121,7 @@ export default {
         }
       }
     },
-    // 
-    // 风机扇叶转动
-    operateWindTurbines() 
-    {
-      // 检查数组是不是有内容
-      if (windTurbineClones.length > 0) 
-      {
-        
-        // 遍历我们保存的每一个“虚拟轴心” (pivotGroup)
-        windTurbineClones.forEach(pivot => 
-        {
-          
-          // 2. 让它旋转 (根据 3ds Max 截图，X 轴对应 Three.js 的 Z 轴)
-          // (这个 pivot 现在的轴心就是 motor 的轴心)
-          pivot.rotation.x += 0.05; // <-- 90% 的可能是 Z 轴
-          
-          // 如果 Z 轴不对，再试试 X 轴
-          // pivot.rotation.x += 0.05;
-        });
-      }
-    },
-
-
-
-
+    
     // 墙生成方法
     createWallDetail(width, height, depth, angle, material, x, y, z, name)
     {
@@ -2219,52 +3132,71 @@ export default {
       cube.name = name;
       scene.add(cube);
     },
-    // 设备指示牌
+    // 设备指示牌 (精灵)
     createDeviceIndicator(canvasConfig) 
     {
+      const scaleFactor = 4; // 【核心修改】清晰度倍数，4倍就很清晰了
+      
       let canvas = document.createElement('canvas');
-      canvas.width = 340;
-      canvas.height = 240;
+      // 原来是 340, 240，现在乘以倍数
+      canvas.width = 340 * scaleFactor;
+      canvas.height = 240 * scaleFactor;
+      
       let context = canvas.getContext('2d');
-      //添加背景图片，进行异步操作
-
+      
       return new Promise((resolve, reject) => 
       {
         let imgMain = new Image();
         imgMain.src = canvasConfig.img;
-        let imgPoint = new Image();
-        imgPoint.src = "/zhangyan-substation/images/tkPr.png";
 
-        //图片加载之后的方法
         imgMain.onload = () => 
         {
-          //将画布处理为透明
-          context.clearRect(0, 0, canvas.width, canvas.height );
-          //绘画图片
-          context.drawImage(imgMain, 0, 0, canvasConfig.width, canvasConfig.height);
-          imgPoint.onload = () =>
-          {
-            // context.drawImage(imgPoint, 0, 160);
-            resolve(makeText(context, canvas, canvasConfig));
-          }
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // 【核心修改】图片绘制尺寸也要乘以倍数
+          context.drawImage(
+            imgMain, 
+            0, 
+            0, 
+            canvasConfig.width * scaleFactor, 
+            canvasConfig.height * scaleFactor
+          );
+          
+          resolve(makeText(context, canvas, canvasConfig, scaleFactor));
         };
-        //图片加载失败的方法
-        imgMain.onerror = (e) => 
-        {
+        
+        imgMain.onerror = (e) => {
             reject(e);
         };
       });
 
-      //内部方法进行文字输入
-      function makeText(context, canvas, canvasConfig) 
+      // 内部方法：文字绘制
+      function makeText(context, canvas, canvasConfig, scale) 
       {
         context.textAlign = 'start';
-        context.font = ' 36px Microsoft YaHei';
+        // 【核心修改】字体大小乘以倍数
+        context.font = `bold ${36 * scale}px Microsoft YaHei`; 
         context.fillStyle = '#ffffff';
-        context.fillText( canvasConfig.txt, canvasConfig.txtPaddingX, canvasConfig.txtPaddingY);
-        // context.fillText('状态：' + canvasConfig.status, 30, 140);
-        //将画布写入纹理，并返回材质
+        
+        // 【核心修改】文字坐标乘以倍数
+        context.fillText(
+            canvasConfig.txt, 
+            canvasConfig.txtPaddingX * scale, 
+            canvasConfig.txtPaddingY * scale
+        );
+
         let texture = new THREE.CanvasTexture(canvas);
+        
+        // 【关键优化】开启各向异性过滤，解决侧面看发虚的问题
+        // renderer 需要是全局变量，确保在这里能访问到
+        if (renderer) {
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        }
+        
+        // 纹理不需要生成 Mipmaps，对于文字来说 LinearFilter 更锐利
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        
         return new THREE.SpriteMaterial({map: texture});
       }
     },
@@ -2369,21 +3301,30 @@ export default {
 @import './styles/animate.css';
 @import './styles/card.scss';
 // 整屏撑满
-.full-content 
-{
+.full-content {
   position: absolute;
-  width: 1920px;
-  height: 1080px;
+  top: 0;
+  left: 0;
+  
+  // --- 【核心修改 1】宽高改为 100%，自适应浏览器窗口 ---
+  width: 100%; 
+  height: 100%;
+  
   margin: 0;
-  // background: url("./images/page-bg.jpg") center no-repeat;
+  
+  // --- 【核心修改 2】隐藏溢出，彻底消灭滚动条 ---
+  overflow: hidden; 
+  
+  // background: url("./images/page-bg.jpg") center no-repeat; // 原有背景设置保留
   -webkit-background-size: cover;
   background-size: cover;
 
-  #container 
-  {
+  #container {
     position: absolute;
     width: 100%;
     height: 100%;
+    // 确保 canvas 也是块级元素，防止下方出现几像素白边
+    display: block; 
   }
 
   .page 
@@ -2424,6 +3365,118 @@ export default {
     position: absolute;
     width: 0;
     height: 0;
+  }
+}
+/* ================== 【新增】加载层样式 ================== */
+.loading-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #000000; /* 纯黑背景，或者用的深蓝色背景 */
+  z-index: 9999; /* 确保在最上层 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.loading-content {
+  text-align: center;
+  color: #00e6ff; /* 科技蓝字体 */
+}
+
+.loading-text {
+  margin-top: 20px;
+  font-size: 24px;
+  font-family: "Microsoft YaHei";
+  letter-spacing: 2px;
+}
+
+/* 简单的旋转圈圈动画 */
+.spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(0, 230, 255, 0.3);
+  border-top: 4px solid #00e6ff;
+  border-radius: 50%;
+  margin: 0 auto;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Vue transition 淡出效果 */
+.fade-leave-active {
+  transition: opacity 1s;
+}
+.fade-leave-to {
+  opacity: 0;
+}
+// === 【新增】科技感弹窗样式 ===
+.tech-modal {
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 400px;
+  min-height: 200px;
+  background: rgba(12, 28, 56, 0.9); // 深蓝半透明背景
+  border: 1px solid #00e6ff;         // 亮蓝边框
+  box-shadow: 0 0 20px rgba(0, 230, 255, 0.4);
+  z-index: 2000;
+  color: #fff;
+  padding: 20px;
+  border-radius: 4px;
+  
+  .modal-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #00e6ff;
+    border-bottom: 1px solid rgba(0, 230, 255, 0.3);
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    font-family: "Microsoft YaHei";
+  }
+  
+  .modal-content {
+    .data-row {
+      margin-bottom: 15px;
+      font-size: 16px;
+      display: flex;
+      justify-content: space-between;
+      
+      .highlight {
+        color: #ffcc00; // 黄色高亮
+        font-weight: bold;
+        font-size: 20px;
+      }
+      .highlight-green {
+        color: #00ff99; // 绿色高亮
+        font-weight: bold;
+        font-size: 20px;
+      }
+      .text-content {
+        max-width: 60%;
+        text-align: right;
+        color: #d1d1d1;
+      }
+    }
+  }
+  
+  .close-btn {
+    position: absolute;
+    top: 5px;
+    right: 10px;
+    font-size: 24px;
+    cursor: pointer;
+    color: #00e6ff;
+    &:hover {
+      color: #fff;
+    }
   }
 }
 

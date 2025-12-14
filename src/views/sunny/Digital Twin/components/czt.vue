@@ -46,14 +46,14 @@
         <el-col :span="12">
           <dv-decoration-11>
             <div @click="masterControlView">
-              主控室视角
+              AI全局智能分析
             </div>
           </dv-decoration-11>
         </el-col>
         <el-col :span="12">
           <dv-decoration-11>
             <div @click="cockpitControlView">
-              驾驶舱视角
+              发电量智能预测
             </div>
           </dv-decoration-11>
         </el-col>

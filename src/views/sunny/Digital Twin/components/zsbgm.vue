@@ -62,14 +62,14 @@
             src="../images/charge.png"
             alt=""
           >
-          <span>电缆110V</span>
+          <span>风力发电机</span>
         </div>
         <div class="z-c-i-value">
           <DigitalTransform
-            :value="767"
+            :value="8"
             :interval="2500"
           />
-          <span class="z-c-i-v-unit">（回）</span>
+          <span class="z-c-i-v-unit">（台）</span>
         </div>
       </div>
       <div class="z-c-item">
@@ -78,48 +78,37 @@
             src="../images/sensor-error.png"
             alt=""
           >
-          <span>GIS 220V间隔</span>
+          <span>光伏太阳能板</span>
         </div>
         <div class="z-c-i-value">
           <DigitalTransform
-            :value="342"
+            :value="200"
             :interval="2500"
           />
-          <span class="z-c-i-v-unit">（个）</span>
+          <span class="z-c-i-v-unit">（片）</span>
         </div>
       </div>
     </div>
   </div>
 </template>
-<script>
-import DigitalTransform from "vue-digital-transform";
+
+<script>//css样式
+// 1. 引入组件
+import DigitalTransform from 'vue-digital-transform';
 
 export default {
   name: "Zsbgm",
+  // 2. 注册组件
   components: {
     DigitalTransform
   },
   data() {
     return {
-      gzsbList: [
-        { name: "高压探测器", value: 36 },
-        { name: "红外被动探测器", value: 106 },
-        { name: "溶解氧传感器", value: 36 },
-        { name: "烟感探测器", value: 72 },
-        { name: "水浸探测室", value: 79 },
-        { name: "玻璃破碎探测器", value: 12 },
-        { name: "风机房", value: 2 },
-        { name: "巡更锚点", value: 138 }
-      ]
     };
-  },
-  mounted() {
-  },
-  destroyed() {
-  },
-  methods: {}
+  }
 };
 </script>
+
 <style lang="scss" scoped>
 @import "../styles/card.scss";
 .zsbgm-content {
@@ -157,4 +146,5 @@ export default {
     }
   }
 }
+  
 </style>
