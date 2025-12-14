@@ -1,6 +1,12 @@
 # 开源项目和模块
 
+本项目基于 **vue-element-admin** 框架开发，vue-element-admin 是一个后台前端解决方案，它基于 Vue 和 Element-UI 实现，提供了丰富的功能组件和业务模型。
+
 本项目使用了以下开源项目和模块，以下是主要依赖项的列表。这些开源项目为项目的开发和功能实现提供了重要支持。
+
+## 基础框架
+
+- **vue-element-admin**: 基于 Vue 和 Element-UI 的后台前端解决方案，提供国际化、动态路由、权限验证等功能。 (GitHub: https://github.com/PanJiaChen/vue-element-admin)
 
 ## 主要依赖项 (Dependencies)
 
