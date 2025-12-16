@@ -19,7 +19,8 @@
     </transition>
     <div class="page">
       <transition
-        enter-active-class="animated fadeInDown"
+        enter-active-class="animated fa
+        deInDown"
         leave-active-class="animated fadeOutUp"
         appear
       >
@@ -69,8 +70,8 @@
             @viewEquipmentDetail="viewEquipmentDetail"
             @roamCheck="roamCheck"
             @realTimeMonitor="realTimeMonitor"
-            @masterControlView="masterControlView"
-            @cockpitControlView="cockpitControlView"
+            @masterControlView="handleAIAnalysis"
+            @cockpitControlView="handlePowerPrediction"
           />
           <!-- 物联事件统计 -->
           <wlsjtj />
@@ -125,28 +126,7 @@
         </div>
         <div class="close-btn" @click="showPowerModal = false">×</div>
       </div>
-    </transition>
-<!--新增发电量预测和智能分析弹窗-->
-    <div class="page">
-         <transition enter-active-class="animated fadeInRight" leave-active-class="animated fadeOutRight" appear>
-        <div class="right">
-          <czt
-            @pushEquipmentWarning="pushEquipmentWarning"
-            @viewEquipmentDetail="viewEquipmentDetail"
-            @roamCheck="roamCheck"
-            @realTimeMonitor="realTimeMonitor"
-            @masterControlView="handleAIAnalysis"  
-            @cockpitControlView="handlePowerPrediction" 
-          />
-          <wlsjtj />
-          <hjxx />
-        </div>
-      </transition>
-    </div>
-
-
-
-    <!-- 实时监控视频 -->
+    </transition><!-- 实时监控视频 -->
     <video
       id="video"
       autoplay
@@ -249,6 +229,10 @@ let roamTweenEndCarm = [];
 let videoObjects = null;  // 播放视频的object
 let monitorObject = [];  // 摄像头模型的object
 let windTurbineDataList = [];
+// 渲染控制器
+let renderController = null;
+// 纹理管理器
+let textureManager = null;
 //函数和数组初始化结束
 
 // 组件添加
@@ -488,6 +472,7 @@ export default {//导入外部组件
       this.createStats(); // 性能工具
       this.creatHelper(); // 三维坐标系
       this.createOutlinePass(); // 呼吸灯
+      textureManager = this.createTextureManager(); // <--- 初始化纹理管理器
       this.createModel(); // 创建对象
       this.render(); // 渲染
       this.addEvent(); // 监听事件，比如窗口缩放和点击模型
@@ -515,6 +500,108 @@ export default {//导入外部组件
       // 3. 出错的回调
       this.loadingManager.onError = (url) => {
         console.error('加载失败:', url);
+      };
+    },
+    
+    // --- 【新增】纹理管理器类 ---
+    createTextureManager() {
+      return {
+        textureCache: new Map(),
+        maxCacheSize: 50,
+        
+        // 加载压缩纹理
+        loadCompressedTexture(url, onLoad = null) {
+          if (this.textureCache.has(url)) {
+            const texture = this.textureCache.get(url);
+            if (onLoad) onLoad(texture);
+            return texture;
+          }
+          
+          const textureLoader = new THREE.TextureLoader(this.loadingManager);
+          const texture = textureLoader.load(url, () => {
+            if (onLoad) onLoad(texture);
+          });
+          
+          // 启用纹理压缩和优化
+          texture.encoding = THREE.sRGBEncoding;
+          texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          texture.minFilter = THREE.LinearMipmapLinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+          texture.generateMipmaps = true;
+          
+          // 缓存纹理
+          if (this.textureCache.size < this.maxCacheSize) {
+            this.textureCache.set(url, texture);
+          }
+          
+          return texture;
+        },
+        
+        // 加载基础纹理
+        loadBasicTexture(url, options = {}) {
+          if (this.textureCache.has(url)) {
+            return this.textureCache.get(url);
+          }
+          
+          const textureLoader = new THREE.TextureLoader(this.loadingManager);
+          const texture = textureLoader.load(url);
+          
+          // 设置默认选项
+          const { 
+            encoding = THREE.sRGBEncoding,
+            anisotropy = renderer.capabilities.getMaxAnisotropy(),
+            minFilter = THREE.LinearMipmapLinearFilter,
+            magFilter = THREE.LinearFilter,
+            generateMipmaps = true,
+            wrapS = THREE.RepeatWrapping,
+            wrapT = THREE.RepeatWrapping
+          } = options;
+          
+          // 应用纹理设置
+          texture.encoding = encoding;
+          texture.anisotropy = anisotropy;
+          texture.minFilter = minFilter;
+          texture.magFilter = magFilter;
+          texture.generateMipmaps = generateMipmaps;
+          texture.wrapS = wrapS;
+          texture.wrapT = wrapT;
+          
+          // 缓存纹理
+          if (this.textureCache.size < this.maxCacheSize) {
+            this.textureCache.set(url, texture);
+          }
+          
+          return texture;
+        },
+        
+        // 检查纹理是否在使用
+        isTextureInUse(texture) {
+          let inUse = false;
+          scene.traverse((child) => {
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach(material => {
+                  if (material.map === texture) inUse = true;
+                  if (material.normalMap === texture) inUse = true;
+                });
+              } else {
+                if (child.material.map === texture) inUse = true;
+                if (child.material.normalMap === texture) inUse = true;
+              }
+            }
+          });
+          return inUse;
+        },
+        
+        // 清理未使用的纹理
+        disposeUnusedTextures() {
+          this.textureCache.forEach((texture, url) => {
+            if (!this.isTextureInUse(texture)) {
+              texture.dispose();
+              this.textureCache.delete(url);
+            }
+          });
+        }
       };
     },
     //销毁
@@ -604,31 +691,50 @@ export default {//导入外部组件
     // 创建光源
     // 创建光源
     createLight() {
-      // 1. 修改：大大提高环境光强度 (从0改为0.6或0.8)，解决死黑问题
+      // 1. 环境光
       scene.add(new THREE.AmbientLight(0xffffff, 0.8));
       
-      // 2. 修改：调整平行光位置，使其从侧前方打过来 (Z轴设为正数可以让光照到物体正面)
-      light = new THREE.DirectionalLight(0xffffff, 1.0); // 强度也可以稍微提高到1.0
-      light.position.set(50, 100, 150); // Z轴改为正数，让光照打在正面
+      // 2. 平行光
+      light = new THREE.DirectionalLight(0xffffff, 1.0);
+      light.position.set(50, 100, 150);
       light.castShadow = true;
-      // 优化 1: 缩小阴影贴图尺寸 (如果不需要极致的阴影细节，1024 够了，不需要更大)
-      light.shadow.mapSize = new THREE.Vector2(1024, 1024);
-      // 优化 2: 严格限制阴影相机的范围 (Frustum)
-     // 默认的阴影相机范围可能很小或过大，手动设置可以避免渲染不必要的区域
-     const d = 500; // 根据场景大小调整这个值
-     light.shadow.camera.left = -d;
-     light.shadow.camera.right = d;
-     light.shadow.camera.top = d;
-     light.shadow.camera.bottom = -d;
-  
-     // 优化 3: 调整阴影偏差，减少波纹
-     light.shadow.bias = -0.0005;
-     scene.add(light);
       
-      // 可选：如果觉得还不够立体，可以加一个半球光模拟天空地面反光
-      // const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
-      // hemiLight.position.set(0, 200, 0);
-      // scene.add(hemiLight);
+      // 优化阴影贴图尺寸
+      light.shadow.mapSize = new THREE.Vector2(1024, 1024);
+      
+      // 优化阴影相机范围
+      const frustumSize = 50;
+      light.shadow.camera.left = -frustumSize;
+      light.shadow.camera.right = frustumSize;
+      light.shadow.camera.top = frustumSize;
+      light.shadow.camera.bottom = -frustumSize;
+      
+      // 优化阴影偏差
+      light.shadow.bias = -0.0005;
+      
+      scene.add(light);
+      
+      // 3. 添加半球光模拟天空地面反光
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+      hemiLight.position.set(0, 200, 0);
+      scene.add(hemiLight);
+    },
+    
+    // 优化阴影设置，只对重要物体启用阴影
+    setupShadowCasters() {
+      // 只让必要的物体投射阴影
+      const importantObjects = ['变压器', '风机', 'building', 'terrain', 'turbine'];
+      
+      scene.traverse((child) => {
+        if (child.isMesh) {
+          const shouldCastShadow = importantObjects.some(name => 
+            child.name.includes(name) || 
+            (child.parent && child.parent.name.includes(name))
+          );
+          child.castShadow = shouldCastShadow;
+          child.receiveShadow = shouldCastShadow;
+        }
+      });
     },
     // 默认相机配置（修改此处即可改变默认视角位置与观察高度）
     getDefaultCameraConfig() {
@@ -694,9 +800,129 @@ export default {//导入外部组件
       // controls.maxPolarAngle = Math.PI / 3  // 仰看角度
       controls.update();
     },
+    // 扩展性能监控
     createStats: function() {
       stats = new Stats();
+      
+      // 添加多个性能面板
+      stats.showPanel(0); // FPS面板
+      const memoryPanel = stats.addPanel(new Stats.Panel('Memory', '#ff8', '#221'));
+      const drawCallsPanel = stats.addPanel(new Stats.Panel('Draw Calls', '#0ff', '#121'));
+      
+      // 自定义性能监控数据
+      this.performanceData = {
+        fps: 0,
+        memory: 0,
+        drawCalls: 0,
+        triangles: 0,
+        textureMemory: 0
+      };
+      
+      // 初始化自适应性能调整
+      this.initAdaptivePerformance();
+      
       document.body.appendChild(stats.dom);
+      
+      // 定期更新自定义性能数据
+      this.performanceUpdateInterval = setInterval(() => {
+        this.updatePerformanceData();
+      }, 1000);
+    },
+    
+    // 初始化自适应性能调整
+    initAdaptivePerformance() {
+      this.adaptivePerformance = {
+        fpsHistory: [],
+        targetFPS: 60,
+        minFPS: 30,
+        qualityLevels: ['high', 'medium', 'low'],
+        currentQuality: 'high',
+        
+        // 性能调整配置
+        qualitySettings: {
+          high: {
+            shadowMap: true,
+            shadowType: THREE.PCFSoftShadowFilter,
+            pixelRatio: window.devicePixelRatio,
+            antialias: true
+          },
+          medium: {
+            shadowMap: true,
+            shadowType: THREE.PCFShadowFilter,
+            pixelRatio: 1,
+            antialias: false
+          },
+          low: {
+            shadowMap: false,
+            shadowType: THREE.BasicShadowMap,
+            pixelRatio: 1,
+            antialias: false
+          }
+        }
+      };
+    },
+    
+    // 更新性能数据
+    updatePerformanceData() {
+      // 更新FPS历史
+      this.adaptivePerformance.fpsHistory.push(stats.dom.children[0].children[0].textContent.split(':')[1].trim());
+      
+      // 保持最近60帧的历史
+      if (this.adaptivePerformance.fpsHistory.length > 60) {
+        this.adaptivePerformance.fpsHistory.shift();
+      }
+      
+      // 每60帧检查一次性能
+      if (this.adaptivePerformance.fpsHistory.length === 60) {
+        this.adjustQuality();
+      }
+    },
+    
+    // 调整渲染质量
+    adjustQuality() {
+      const avgFPS = this.adaptivePerformance.fpsHistory.reduce((sum, fps) => sum + parseFloat(fps), 0) / this.adaptivePerformance.fpsHistory.length;
+      
+      if (avgFPS < this.adaptivePerformance.minFPS && this.adaptivePerformance.currentQuality !== 'low') {
+        // 降低质量
+        this.decreaseQuality();
+      } else if (avgFPS > this.adaptivePerformance.targetFPS - 10 && this.adaptivePerformance.currentQuality !== 'high') {
+        // 提高质量
+        this.increaseQuality();
+      }
+    },
+    
+    // 降低渲染质量
+    decreaseQuality() {
+      const qualityIndex = this.adaptivePerformance.qualityLevels.indexOf(this.adaptivePerformance.currentQuality);
+      if (qualityIndex < this.adaptivePerformance.qualityLevels.length - 1) {
+        this.adaptivePerformance.currentQuality = this.adaptivePerformance.qualityLevels[qualityIndex + 1];
+        this.applyQualitySettings();
+      }
+    },
+    
+    // 提高渲染质量
+    increaseQuality() {
+      const qualityIndex = this.adaptivePerformance.qualityLevels.indexOf(this.adaptivePerformance.currentQuality);
+      if (qualityIndex > 0) {
+        this.adaptivePerformance.currentQuality = this.adaptivePerformance.qualityLevels[qualityIndex - 1];
+        this.applyQualitySettings();
+      }
+    },
+    
+    // 应用质量设置
+    applyQualitySettings() {
+      const settings = this.adaptivePerformance.qualitySettings[this.adaptivePerformance.currentQuality];
+      
+      // 应用阴影设置
+      renderer.shadowMap.enabled = settings.shadowMap;
+      if (settings.shadowMap) {
+        renderer.shadowMap.type = settings.shadowType;
+      }
+      
+      // 应用像素比
+      renderer.setPixelRatio(settings.pixelRatio);
+      
+      console.log(`调整渲染质量为: ${this.adaptivePerformance.currentQuality}`);
     },
     creatHelper: function() {
       // 三维坐标系
@@ -729,34 +955,112 @@ export default {//导入外部组件
   // ================== 【新增代码 END】 ==================
     },
 
+    // 渲染控制器类
+    createRenderController() {
+      const vm = this; // 保存Vue实例引用
+      return {
+        isRendering: true,
+        lastRenderTime: 0,
+        targetFPS: 60,
+        frameInterval: 1000 / 60,
+        hasCameraMoved: false,
+        hasAnimations: true,
+        hasModelChanges: false,
+        
+        // 初始化相机位置用于检测移动
+        cameraPosition: new THREE.Vector3(),
+        lastCameraPosition: new THREE.Vector3(),
+        
+        // 检测相机是否移动
+        checkCameraMove() {
+          camera.getWorldPosition(this.cameraPosition);
+          if (!this.cameraPosition.equals(this.lastCameraPosition)) {
+            this.hasCameraMoved = true;
+            this.lastCameraPosition.copy(this.cameraPosition);
+            return true;
+          }
+          this.hasCameraMoved = false;
+          return false;
+        },
+        
+        // 检查是否有动画在运行
+        checkAnimations() {
+          // 检查风机是否在运行
+          const turbinesRunning = windTurbineDataList.some(turbine => turbine.isRunning);
+          // 检查是否有TWEEN动画在运行
+          const hasTweens = TWEEN.getAll().length > 0;
+          // 检查是否在漫游
+          const isRoaming = roamTweenEndCarm.length > 0;
+          
+          this.hasAnimations = turbinesRunning || hasTweens || isRoaming;
+          return this.hasAnimations;
+        },
+        
+        // 判断是否需要渲染
+        shouldRender() {
+          return this.checkCameraMove() || this.checkAnimations() || this.hasModelChanges;
+        },
+        
+        // 设置模型变化标志
+        setModelChanged() {
+          this.hasModelChanges = true;
+        },
+        
+        // 清除模型变化标志
+        clearModelChanged() {
+          this.hasModelChanges = false;
+        },
+        
+        // 渲染方法
+        render(currentTime) {
+          // 渲染节流
+          if (currentTime - this.lastRenderTime < this.frameInterval) {
+            requestAnimationFrame((time) => this.render(time));
+            return;
+          }
+          
+          // 只在需要时渲染
+          if (this.shouldRender()) {
+            // 道路指示移动
+            vm.operateRoadPoint(); // 使用Vue实例调用方法
+            
+            /// ================== 风机动画实现 START ==================
+            if (windTurbineDataList && windTurbineDataList.length > 0) {
+              windTurbineDataList.forEach(turbine => {
+                if (turbine.rotor && turbine.isRunning) {
+                  turbine.rotor.rotateX(turbine.speed);
+                }
+              });
+            }
+            // =========================【END】====================================
+            
+            // 更新性能插件
+            stats.update();
+            TWEEN.update();
+            
+            // 渲染场景
+            if (composer) {
+              composer.render();
+            } else {
+              renderer.render(scene, camera);
+            }
+            
+            this.lastRenderTime = currentTime;
+            this.clearModelChanged();
+          }
+          
+          requestAnimationFrame((time) => this.render(time));
+        }
+      };
+    },
+    
     //渲染内容
     render() {
-      // 道路指示移动
-      this.operateRoadPoint()
-      /// ================== 风机动画实现 START ==================
-      // 这里没有 'this.'，因为把它定义在了 export default 外面
-      if (windTurbineDataList && windTurbineDataList.length > 0) {
-          windTurbineDataList.forEach(turbine => {
-          if (turbine.rotor && turbine.isRunning) {
-                //在threejs中风机旋转轴是X轴
-               turbine.rotor.rotateX(turbine.speed); 
-               }
-            });
-        }
-  // =========================【END】====================================
-
-      // 3. 渲染场景
-      requestAnimationFrame(this.render);
-      // 更新性能插件
-      stats.update();
-      TWEEN.update();
-      renderer.render(scene, camera);
-      // 呼吸灯效果要放到最后渲染，要不然没效果
-      if (composer) {
-        composer.render();
-      } else {
-        renderer.render(scene, camera);
+      if (!renderController) {
+        renderController = this.createRenderController();
       }
+      
+      renderController.render(performance.now());
     },
     addEvent() 
     {
@@ -1266,59 +1570,101 @@ export default {//导入外部组件
       );
     },
 
+    // 模型分组配置
+    getModelGroups() {
+      return {
+        critical: [
+          // 关键模型：场景基础、主要建筑和核心设备
+          this.addBaseplate,
+          this.addGrassGround,
+          this.addWell,
+          this.addHouseModel,
+          this.addTransformerModel
+        ],
+        important: [
+          // 重要模型：电力设施、输电设备
+          this.addHighVoltageTowerModel,
+          this.addPowerPylonModel,
+          this.addBilateralPostsModel,
+          this.addFirstEquipmentModel,
+          this.addFirstPipesModel,
+          this.addFirstEquipmentAgainstModel,
+          this.addFirstPostsAgainstModel,
+          this.addLinkPopesModel,
+          this.addTransformerPylonModel,
+          this.addTransitionHouseModel,
+          this.addDisconnectorModel
+        ],
+        optional: [
+          // 可选模型：装饰性元素、辅助设施
+          this.addLastTwoPowerPylonModel,
+          this.addLastTwoPostsModel,
+          this.addLastEquipmentAgainstModel,
+          this.addLastPipesModel,
+          this.addLastEquipmentModel,
+          this.addWireModel,
+          this.addWindTurbineModel,
+          this.addSolarPanelModel,
+          this.addArrowModel
+        ]
+      };
+    },
+    
+    // 分批加载模型
+    async loadModelsByGroup() {
+      const groups = this.getModelGroups();
+      const totalGroups = 3;
+      let currentGroup = 0;
+      
+      // 先加载关键模型
+      currentGroup++;
+      for (const modelFunc of groups.critical) {
+        await this.loadModelGroupItem(modelFunc);
+      }
+      this.updateLoadingProgress(30);
+      
+      // 再加载重要模型
+      currentGroup++;
+      for (const modelFunc of groups.important) {
+        await this.loadModelGroupItem(modelFunc);
+      }
+      this.updateLoadingProgress(70);
+      
+      // 最后加载可选模型
+      currentGroup++;
+      for (const modelFunc of groups.optional) {
+        await this.loadModelGroupItem(modelFunc);
+      }
+      this.updateLoadingProgress(100);
+      
+      // 优化阴影设置
+      this.setupShadowCasters();
+    },
+    
+    // 加载单个模型组项
+    loadModelGroupItem(modelFunc) {
+      return new Promise((resolve) => {
+        try {
+          modelFunc.call(this);
+          resolve();
+        } catch (error) {
+          console.error('加载模型失败:', error);
+          resolve(); // 继续加载其他模型
+        }
+      });
+    },
+    
+    // 更新加载进度
+    updateLoadingProgress(progress) {
+      this.loadingProgress = progress;
+      console.log(`加载进度: ${progress}%`);
+    },
+    
     // 创建模型对象
     createModel() 
     {
-      // 创建底板
-      this.addBaseplate();
-      // 创建地面引导箭头
-      this.addArrowModel();
-      // 创建围墙
-      this.addWell();
-      // 创建房子模型（配电室、主控室、安保室等）
-      this.addHouseModel();
-      // 创建高压电塔模型
-      this.addHighVoltageTowerModel();
-      // 创建电力桥塔
-      this.addPowerPylonModel();
-      // 创建两侧柱子
-      this.addBilateralPostsModel();
-      // 创建最开始的设备
-      this.addFirstEquipmentModel();
-      // 创建最开始的管子
-      this.addFirstPipesModel();
-      // 创建最开始的设备（反）
-      this.addFirstEquipmentAgainstModel();
-      // 创建最开始的柱子（反）
-      this.addFirstPostsAgainstModel();
-      // 创建连接管
-      this.addLinkPopesModel();
-      // 创建变压器桥塔
-      this.addTransformerPylonModel();
-      // 创建变压器
-      this.addTransformerModel();
-      // 创建转换房
-      this.addTransitionHouseModel();
-      // 创建断路器
-      this.addDisconnectorModel();
-      // 创建倒数第二道的电力桥塔（输出端）
-      this.addLastTwoPowerPylonModel();
-      // 创建倒数第二道的柱子（反）（输出端）
-      this.addLastTwoPostsModel();
-      // 创建最后的设备（反）（输出端）
-      this.addLastEquipmentAgainstModel();
-      // 创建最后的管子（输出端）
-      this.addLastPipesModel();
-      // 创建最后的设备（输出端）
-      this.addLastEquipmentModel();
-      // 创建电线
-      this.addWireModel();
-      // 创建风力发电机
-      this.addWindTurbineModel();
-      // 创建太阳能发电板
-      this.addSolarPanelModel();
-      //地面
-      this.addGrassGround();
+      // 开始分批加载模型
+      this.loadModelsByGroup();
     },
 
     // 创建水泥地面底板
@@ -1327,16 +1673,15 @@ export default {//导入外部组件
       // 创建底板并添加到场景
       let planeGeometry = new THREE.BoxGeometry(300, 150, 1);
       // 地板贴图效果
-      let textureLoader = new THREE.TextureLoader(this.loadingManager); // 纹理加载器
-      let texture = textureLoader.load(
+      let texture = textureManager.loadBasicTexture(
         "/sunny-substation/images/水泥地面.png",
-        function(texture) 
         {
-          texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-          texture.offset.set(0, 0);
-          texture.repeat.set(450, 250);
+          wrapS: THREE.RepeatWrapping,
+          wrapT: THREE.RepeatWrapping
         }
       );
+      texture.offset.set(0, 0);
+      texture.repeat.set(450, 250);
       const planeMaterial = new THREE.MeshStandardMaterial({
         map: texture
       });
@@ -1350,18 +1695,24 @@ export default {//导入外部组件
       scene.add(plane);
 
       // 横向路面贴图
-      let horizontalRoadTexture = new THREE.TextureLoader().load('/sunny-substation/images/马路背景.jpg');
-      horizontalRoadTexture.wrapS = horizontalRoadTexture.wrapT = THREE.RepeatWrapping;
+      let horizontalRoadTexture = textureManager.loadBasicTexture('/sunny-substation/images/马路背景.jpg', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       horizontalRoadTexture.repeat.set(15, 1);
 
       // 纵向路面贴图（A1）
-      let lengthwaysRoadTextureA = new THREE.TextureLoader().load('/sunny-substation/images/马路背景.jpg');
-      lengthwaysRoadTextureA.wrapS = lengthwaysRoadTextureA.wrapT = THREE.RepeatWrapping;
+      let lengthwaysRoadTextureA = textureManager.loadBasicTexture('/sunny-substation/images/马路背景.jpg', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       lengthwaysRoadTextureA.repeat.set(5, 1);
 
       // 纵向路面贴图（B1）
-      let lengthwaysRoadTextureB = new THREE.TextureLoader().load('/sunny-substation/images/马路背景.jpg');
-      lengthwaysRoadTextureB.wrapS = lengthwaysRoadTextureB.wrapT = THREE.RepeatWrapping;
+      let lengthwaysRoadTextureB = textureManager.loadBasicTexture('/sunny-substation/images/马路背景.jpg', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       lengthwaysRoadTextureB.repeat.set(2.5, 1);
 
       // 主干道（横向）
@@ -1470,7 +1821,7 @@ export default {//导入外部组件
     // 材质颜色调整（用于还原原图颜色，避免过度亮化）
     grassMetalness: 0,        // 金属度（0 = 非金属，更接近原纹理）
     grassRoughness: 1.0,      // 粗糙度（1.0 = 完全粗糙，还原照片质感）
-    grassIntensity: 0.399,      // 纹理亮度缩放（0.8 = 较亮，还原草地自然亮度；可调范围 0.3~1.0）
+    grassIntensity: 1.5,      // 纹理亮度缩放（1.5 = 更亮，与山地亮度保持一致；可调范围 0.5~2.0）
   };
 
   // ============================================================
@@ -1525,8 +1876,10 @@ export default {//导入外部组件
       // ============================================================
       // 创建贴图草地平面（完全水平，不倾斜）
       // ============================================================
-      const groundTex = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/crops_ground.jpg');
-      groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+      const groundTex = textureManager.loadBasicTexture('/sunny-substation/images/crops_ground.jpg', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       groundTex.repeat.set(config.grassTextureRepeatX, config.grassTextureRepeatY);
       
       // 应用颜色强度缩放（让纹理看起来更接近原图，避免过度亮化）
@@ -1592,8 +1945,10 @@ export default {//导入外部组件
     {
       // 外墙
       let outsideWallArray = [];
-      let wallTexture = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/围墙.png')
-      wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
+      let wallTexture = textureManager.loadBasicTexture('/sunny-substation/images/围墙.png', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       wallTexture.repeat.set(5, 1);
       outsideWallArray.push(new THREE.MeshStandardMaterial({map: wallTexture}));  //前
       outsideWallArray.push(new THREE.MeshStandardMaterial({map: wallTexture}));  //后
@@ -2984,8 +3339,10 @@ addWindTurbineModel() {
     addArrowModel() 
     {
       // 主干道箭头
-      mainArrowsRoadTexture = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
-      mainArrowsRoadTexture.wrapS = mainArrowsRoadTexture.wrapT = THREE.RepeatWrapping;
+      mainArrowsRoadTexture = textureManager.loadBasicTexture('/sunny-substation/images/箭头.png', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       mainArrowsRoadTexture.repeat.set(1, 15);
 
       let mainRoadPoint = new THREE.MeshBasicMaterial();
@@ -3001,8 +3358,10 @@ addWindTurbineModel() {
 
 
       // A1干道（纵向）
-      arrowsRoadTextureA1 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
-      arrowsRoadTextureA1.wrapS = arrowsRoadTextureA1.wrapT = THREE.RepeatWrapping;
+      arrowsRoadTextureA1 = textureManager.loadBasicTexture('/sunny-substation/images/箭头.png', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       arrowsRoadTextureA1.repeat.set(1, 5);
       let a1RoadPoint = new THREE.MeshBasicMaterial();
       a1RoadPoint.map = arrowsRoadTextureA1;
@@ -3015,8 +3374,10 @@ addWindTurbineModel() {
       a1RoadMesh.rotation.z = 1 * Math.PI;
 
       // A2干道（横向）
-      arrowsRoadTextureA2 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
-      arrowsRoadTextureA2.wrapS = arrowsRoadTextureA2.wrapT = THREE.RepeatWrapping;
+      arrowsRoadTextureA2 = textureManager.loadBasicTexture('/sunny-substation/images/箭头.png', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       arrowsRoadTextureA2.repeat.set(1, 15);
       let a2RoadPoint = new THREE.MeshBasicMaterial();
       a2RoadPoint.map = arrowsRoadTextureA2;
@@ -3029,8 +3390,10 @@ addWindTurbineModel() {
       a2RoadMesh.rotation.z = 1.5 * Math.PI;
 
       // A3干道（纵向）
-      arrowsRoadTextureA3 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
-      arrowsRoadTextureA3.wrapS = arrowsRoadTextureA3.wrapT = THREE.RepeatWrapping;
+      arrowsRoadTextureA3 = textureManager.loadBasicTexture('/sunny-substation/images/箭头.png', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       arrowsRoadTextureA3.repeat.set(1, 5);
       let a3RoadPoint = new THREE.MeshBasicMaterial();
       a3RoadPoint.map = arrowsRoadTextureA3;
@@ -3043,8 +3406,10 @@ addWindTurbineModel() {
       a3RoadMesh.rotation.z = 2 * Math.PI;
 
       // B1干道（纵向）
-      arrowsRoadTextureB1 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
-      arrowsRoadTextureB1.wrapS = arrowsRoadTextureB1.wrapT = THREE.RepeatWrapping;
+      arrowsRoadTextureB1 = textureManager.loadBasicTexture('/sunny-substation/images/箭头.png', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       arrowsRoadTextureB1.repeat.set(1, 1.5);
       let b1RoadPoint = new THREE.MeshBasicMaterial();
       b1RoadPoint.map = arrowsRoadTextureB1;
@@ -3057,8 +3422,10 @@ addWindTurbineModel() {
       b1RoadMesh.rotation.z = 2 * Math.PI;
 
       // B2干道（横向）
-      arrowsRoadTextureB2 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
-      arrowsRoadTextureB2.wrapS = arrowsRoadTextureB2.wrapT = THREE.RepeatWrapping;
+      arrowsRoadTextureB2 = textureManager.loadBasicTexture('/sunny-substation/images/箭头.png', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       arrowsRoadTextureB2.repeat.set(1, 15);
       let b2RoadPoint = new THREE.MeshBasicMaterial();
       b2RoadPoint.map = arrowsRoadTextureB2;
@@ -3071,8 +3438,10 @@ addWindTurbineModel() {
       b2RoadMesh.rotation.z = 1.5 * Math.PI;
 
       // B3干道（纵向）
-      arrowsRoadTextureB3 = new THREE.TextureLoader(this.loadingManager).load('/sunny-substation/images/箭头.png');
-      arrowsRoadTextureB3.wrapS = arrowsRoadTextureB3.wrapT = THREE.RepeatWrapping;
+      arrowsRoadTextureB3 = textureManager.loadBasicTexture('/sunny-substation/images/箭头.png', {
+        wrapS: THREE.RepeatWrapping,
+        wrapT: THREE.RepeatWrapping
+      });
       arrowsRoadTextureB3.repeat.set(1, 1.5);
       let b3RoadPoint = new THREE.MeshBasicMaterial();
       b3RoadPoint.map = arrowsRoadTextureB3;
@@ -3111,13 +3480,13 @@ addWindTurbineModel() {
         }
         else 
         {
-          mainArrowsRoadTexture.offset.y += 0.02;
-          arrowsRoadTextureA1.offset.y += 0.02;
-          arrowsRoadTextureA2.offset.y += 0.02;
-          arrowsRoadTextureA3.offset.y += 0.02;
-          arrowsRoadTextureB1.offset.y += 0.02;
-          arrowsRoadTextureB2.offset.y += 0.02;
-          arrowsRoadTextureB3.offset.y += 0.02;
+          mainArrowsRoadTexture.offset.y += 0.002;
+          arrowsRoadTextureA1.offset.y += 0.002;
+          arrowsRoadTextureA2.offset.y += 0.002;
+          arrowsRoadTextureA3.offset.y += 0.002;
+          arrowsRoadTextureB1.offset.y += 0.002;
+          arrowsRoadTextureB2.offset.y += 0.002;
+          arrowsRoadTextureB3.offset.y += 0.002;
         }
       }
     },
@@ -3482,3 +3851,4 @@ addWindTurbineModel() {
 
 
 </style>
+
