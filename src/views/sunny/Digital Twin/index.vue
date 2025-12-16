@@ -1904,6 +1904,7 @@ export default {//导入外部组件
     grassMetalness: 0,        // 金属度（0 = 非金属，更接近原纹理）
     grassRoughness: 1.0,      // 粗糙度（1.0 = 完全粗糙，还原照片质感）
     grassIntensity: 1.0,      // 纹理亮度缩放（1.0 = 原色，与山地亮度保持一致；可调范围 0.5~2.0）
+    grassSaturation: 0.6,     // 草地饱和度（0 = 灰度，1 = 原始饱和度；推荐范围 0.4~0.8）
   };
 
   // ============================================================
@@ -1979,8 +1980,13 @@ export default {//导入外部组件
         polygonOffsetUnits: 2,            // 偏移单位
       });
       
-      // 应用亮度缩放，让纹理更接近原图深绿色（而非过度亮化的黄绿色）
-      groundMat.color.multiplyScalar(config.grassIntensity);
+      // 应用饱和度和亮度缩放，让纹理更接近原图深绿色（而非过度亮化的黄绿色）
+      const saturation = config.grassSaturation || 0.6;
+      groundMat.color.setRGB(
+        0.5 + (0.5 * saturation),
+        0.5 + (0.5 * saturation), 
+        0.5 + (0.5 * saturation)
+      ).multiplyScalar(config.grassIntensity);
 
       // 创建平面几何体（默认在 XY 平面，法向指向 +Z）
       const groundGeo = new THREE.PlaneGeometry(config.grassPlaneWidth, config.grassPlaneDepth);
