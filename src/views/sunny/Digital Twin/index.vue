@@ -19,8 +19,7 @@
     </transition>
     <div class="page">
       <transition
-        enter-active-class="animated fa
-        deInDown"
+        enter-active-class="animated fadeInDown"
         leave-active-class="animated fadeOutUp"
         appear
       >
@@ -280,7 +279,18 @@ export default {//导入外部组件
         nextHour: 1200,
         todayTotal: 25000,
         accuracy: 99.2,
-    }
+      },
+      
+      // WebSocket统一配置
+      wsConfig: {
+        baseUrl: 'ws://127.0.0.1', // 统一使用127.0.0.1
+        ports: {
+          windTurbine: 9000,
+          fault: 9752,
+          ai: 9760,
+          power: 9762
+        }
+      }
   };
 },
   
@@ -294,13 +304,11 @@ export default {//导入外部组件
     this.initAIWebSocket();
     this.initPowerWebSocket();
     //新增：初始化故障监听
-    this.initFaultListener(); 
-    window.controlTurbine = this.setTurbineSpeed;
+    this.initFaultListener();
   },
   destroyed() {
-    this.destroyed();
+    // 关闭WebSocket连接
     if (this.wsTrigger) this.wsTrigger.close(); 
-    // === 【新增】页面销毁时关闭连接 ===
     if (this.wsAI) this.wsAI.close();
     if (this.wsPower) this.wsPower.close();
   },
@@ -308,7 +316,7 @@ export default {//导入外部组件
     // 初始化 WebSocket 连接
     initWindTurbineSpeedSetSocket() {
       // 风机速度指令发送端口号是9000端口 
-      const ws = new WebSocket('ws://127.0.0.1:9000');
+      const ws = new WebSocket(`${this.wsConfig.baseUrl}:${this.wsConfig.ports.windTurbine}`);
 
       ws.onopen = () => {
         console.log('🔗 风速控制（9000端口）已连接');
@@ -334,7 +342,7 @@ export default {//导入外部组件
     },
     //故障监听服务
     initFaultListener() {
-      this.wsTrigger = new WebSocket('ws://localhost:9752');
+      this.wsTrigger = new WebSocket(`${this.wsConfig.baseUrl}:${this.wsConfig.ports.fault}`);
       
       this.wsTrigger.onopen = () => {
         console.log('🚨 故障监听服务 (9752端口) 已连接');
@@ -392,7 +400,7 @@ export default {//导入外部组件
     },
 // === 【新增】1. AI全局智能分析 (端口 9760) ===
     initAIWebSocket() {
-      this.wsAI = new WebSocket('ws://127.0.0.1:9760');
+      this.wsAI = new WebSocket(`${this.wsConfig.baseUrl}:${this.wsConfig.ports.ai}`);
       
       this.wsAI.onopen = () => {
         console.log('🤖 AI智能分析服务 (9760) 已连接');
@@ -429,7 +437,7 @@ export default {//导入外部组件
     },
     // === 【新增】2. 发电量智能预测 (端口 9762) ===
     initPowerWebSocket() {
-      this.wsPower = new WebSocket('ws://127.0.0.1:9762');
+      this.wsPower = new WebSocket(`${this.wsConfig.baseUrl}:${this.wsConfig.ports.power}`);
       
       this.wsPower.onopen = () => {
         console.log('⚡ 发电量预测服务 (9762) 已连接');
@@ -606,6 +614,60 @@ export default {//导入外部组件
     },
     //销毁
     destroyed() {//销毁函数
+      // 移除事件监听器
+      window.removeEventListener("resize", this.onWindowResize, false);
+      document.removeEventListener("click", this.onModelClick, false);
+      
+      // 清理Three.js资源
+      if (scene) {
+        // 遍历场景中的对象，释放几何体和材质
+        scene.traverse((object) => {
+          if (object.isMesh) {
+            if (object.geometry) object.geometry.dispose();
+            
+            if (object.material) {
+              if (Array.isArray(object.material)) {
+                object.material.forEach(material => material.dispose());
+              } else {
+                object.material.dispose();
+              }
+            }
+          }
+        });
+        
+        // 清理场景背景和环境贴图
+        if (scene.background) scene.background.dispose();
+        if (scene.environment) scene.environment.dispose();
+      }
+      
+      // 清理渲染器相关资源
+      if (renderer) {
+        renderer.dispose();
+      }
+      
+      // 清理道路标志箭头贴图
+      [
+        mainArrowsRoadTexture,
+        arrowsRoadTextureA1, arrowsRoadTextureA2, arrowsRoadTextureA3,
+        arrowsRoadTextureB1, arrowsRoadTextureB2, arrowsRoadTextureB3
+      ].forEach(texture => {
+        if (texture) texture.dispose();
+      });
+      
+      // 清理后效相关资源
+      if (composer) {
+        // 清理composer中的passes
+        if (renderPass) renderPass.dispose();
+        if (outlinePass) outlinePass.dispose();
+        if (effectFXAA) effectFXAA.dispose();
+      }
+      
+      // 关闭所有WebSocket连接
+      if (this.wsTrigger) this.wsTrigger.close();
+      if (this.wsAI) this.wsAI.close();
+      if (this.wsPower) this.wsPower.close();
+      
+      // 设置变量为null
       stats = null;
       scene = null;
       gui = null;
@@ -615,7 +677,10 @@ export default {//导入外部组件
       camera = null;
       renderer = null;
       controls = null;
-      // 道路标志箭头
+      composer = null;
+      renderPass = null;
+      outlinePass = null;
+      effectFXAA = null;
       mainArrowsRoadTexture = null;
       arrowsRoadTextureA1 = null;
       arrowsRoadTextureA2 = null;
@@ -623,14 +688,6 @@ export default {//导入外部组件
       arrowsRoadTextureB1 = null;
       arrowsRoadTextureB2 = null;
       arrowsRoadTextureB3 = null;
-      // 呼吸灯相关
-      composer = null;
-      renderPass = null;
-      outlinePass = null;
-      effectFXAA = null;
-      // 保存变压器变量，后期做推送设备告警使用
-      window.removeEventListener("resize", this.onWindowResize, false);
-      document.removeEventListener("click", this.onModelClick, false);
     },
 
     
