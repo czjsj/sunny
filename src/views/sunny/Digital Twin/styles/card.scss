@@ -1,10 +1,58 @@
+/* ================== 【更新】集成设计令牌的卡片样式 ================== */
 .v-card {
     margin-bottom: 22px;
     width: 100%;
     height: auto;
+    
+    /* 应用科技面板样式 */
+    background: var(--tech-glass-bg, rgba(8, 16, 30, 0.35));
+    backdrop-filter: var(--tech-glass-blur, blur(10px));
+    -webkit-backdrop-filter: var(--tech-glass-blur, blur(10px));
+    border: 1px solid var(--tech-glass-border, rgba(0, 240, 255, 0.35));
+    clip-path: var(--tech-clip-corner, none);
+    box-shadow: var(--tech-border-glow, 0 0 20px rgba(0, 240, 255, 0.4));
+    position: relative;
+    
+    /* 浏览器兼容性回退 */
+    @supports not (backdrop-filter: blur(10px)) {
+        background: rgba(8, 16, 30, 0.35);
+    }
+    
+    @supports not (clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%)) {
+        border-radius: 4px;
+    }
+    
+    /* L型装饰角 - 左上角 */
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 20px;
+        height: 20px;
+        border: 2px solid var(--tech-primary, #00f0ff);
+        border-right: none;
+        border-bottom: none;
+        z-index: 1;
+    }
+    
+    /* L型装饰角 - 右下角 */
+    &::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 20px;
+        height: 20px;
+        border: 2px solid var(--tech-primary, #00f0ff);
+        border-left: none;
+        border-top: none;
+        z-index: 1;
+    }
+    
     .c-title {
-        border-left: 2px solid rgba(2, 164, 247, 0.6);
-        border-right: 2px solid rgba(2, 164, 247, 0.6);
+        border-left: 2px solid var(--tech-glass-border, rgba(2, 164, 247, 0.35));
+        border-right: 2px solid var(--tech-glass-border, rgba(2, 164, 247, 0.35));
         .c-t-content {
             position: relative;
             display: flex;
@@ -13,12 +61,17 @@
             height: 30px;
             line-height: 30px;
             width: 100%;
-            color: #02A4F7;
+            color: var(--tech-primary, #02A4F7);
             border-bottom: 1px transparent solid;
-            background: linear-gradient(90deg, rgba(2, 164, 247, 0), rgba(2, 164, 247, 0.37), rgba(2, 164, 247, 0.03));
+            background: linear-gradient(90deg, 
+                rgba(0, 240, 255, 0), 
+                rgba(0, 240, 255, 0.35), 
+                rgba(0, 240, 255, 0.03)
+            );
             .c-t-c-center {
                 font-size: 18px;
                 font-weight: bold;
+                color: var(--tech-primary, #02A4F7);
             }
             .c-t-c-right {
                 position: absolute;
@@ -31,11 +84,11 @@
                     cursor: pointer;
                 }
                 span {
-                    color: #02A4F7;
+                    color: var(--tech-primary, #02A4F7);
                     font-size: 14px;
                 }
                 .selected {
-                    color: #428bfe;
+                    color: var(--tech-secondary, #428bfe);
                     font-size: 16px;
                 }
             }
@@ -44,6 +97,41 @@
     .c-content {
         height: auto;
         padding: 15px;
-        background: rgba(0, 0, 0, 0.5);
+        background: var(--tech-glass-bg, rgba(0, 0, 0, 0.35));
+    }
+}
+
+/* ================== 【新增】数字统计样式增强 ================== */
+/* 为统计数字应用等宽字体和颜色编码 */
+.v-card .c-content {
+    .stat-number, 
+    .data-value,
+    .metric-value {
+        font-family: 'Courier New', 'Consolas', monospace;
+        font-weight: bold;
+        font-size: 20px;
+        letter-spacing: 1px;
+        
+        &.warning {
+            color: var(--tech-warning, #ffcc00);
+        }
+        &.success {
+            color: var(--tech-success, #00ff99);
+        }
+        &.primary {
+            color: var(--tech-primary, #00f0ff);
+        }
+    }
+    
+    /* 列表项样式 */
+    .data-row,
+    .list-item {
+        border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+        padding: 8px 0;
+        transition: background-color 0.2s ease;
+        
+        &:nth-child(even) {
+            background: rgba(0, 240, 255, 0.05);
+        }
     }
 }
