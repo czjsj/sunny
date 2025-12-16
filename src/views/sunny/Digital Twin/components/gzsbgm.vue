@@ -11,20 +11,27 @@
       <div class="top-stats">
         <div class="stat-item">
           <div class="stat-label">
-            <span class="dot cyan"></span> 当前发电总量 (MW)
+            <span class="dot cyan" /> 当前发电总量 (MW)
           </div>
-          <div class="stat-value cyan-text">{{ currentTotal }}</div>
+          <div class="stat-value cyan-text">
+            {{ currentTotal }}
+          </div>
         </div>
         <div class="stat-item">
           <div class="stat-label">
-            <span class="dot yellow"></span> 近三天发电总量 (MW)
+            <span class="dot yellow" /> 近三天发电总量 (MW)
           </div>
-          <div class="stat-value yellow-text">{{ threeDaysTotal }}</div>
+          <div class="stat-value yellow-text">
+            {{ threeDaysTotal }}
+          </div>
         </div>
       </div>
 
       <div class="chart-container">
-        <div ref="chart" class="chart-box"></div>
+        <div
+          ref="chart"
+          class="chart-box"
+        />
       </div>
     </div>
   </div>

@@ -46,13 +46,30 @@ export default {
   height: 71px;
   width: 1920px;
   display: flex;
-  background-color: #001927;
-  background: url('../images/title-bg.png');
+  
+  /* ================== 【新增】赛博朋克导航样式 ================== */
+  /* 倒梯形造型 */
+  clip-path: var(--tech-clip-trapezoid, none);
+  background: var(--tech-glass-bg, rgba(0, 25, 39, 0.35));
+  backdrop-filter: var(--tech-glass-blur, none);
+  -webkit-backdrop-filter: var(--tech-glass-blur, none);
+  border-bottom: 2px solid var(--tech-primary, #00f0ff);
+  box-shadow: var(--tech-border-glow, 0 0 20px rgba(0, 240, 255, 0.4));
+  
+  /* 浏览器兼容性回退 */
+  @supports not (backdrop-filter: blur(10px)) {
+    background: rgba(0, 25, 39, 0.35);
+  }
+  
+  @supports not (clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%)) {
+    background: url('../images/title-bg.png');
+    background-color: #001927;
+  }
   .top-left {
       display: flex;
       margin-left: 250px;//距离最左侧距离
       .top-left-weather {
-          height: 55px;//整体高度设置
+          height: 60px;//整体高度设置
           width: 380px;//整体宽度设置
           display: flex;
           align-items: center;
@@ -105,18 +122,39 @@ export default {
   }
   .t-center {
       position: absolute;
-      left: 710px;
-      width: 500px;
+      left: 110px;
+      width: 600px;
       height: 71px;
       line-height: 71px;
-      font-size: 33px;
+      
+      /* ================== 【新增】赛博朋克标题样式 ================== */
+      font-size: 32px;                    /* 增大字体到32px */
       font-weight: bold;
-      color: #FFFFFF;
-      text-shadow: 0px 5px 9px rgba(0, 0, 0, 0.57);
-      background: linear-gradient(180deg, #FFFFFF 0%, #20C7FF 100%);
-      background-clip: text;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      letter-spacing: 4px;                /* 增加字符间距到4px */
+      color: var(--tech-text-primary, #FFFFFF);
+      text-shadow: var(--tech-text-glow, 0 0 10px rgba(0, 240, 255, 0.8));
+      position: relative;
+      
+      /* 渐变线装饰 */
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: -10px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 200px;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--tech-primary, #00f0ff), transparent);
+      }
+      
+      /* 浏览器兼容性回退 */
+      @supports not (text-shadow: 0 0 10px rgba(0, 240, 255, 0.8)) {
+        background: linear-gradient(180deg, #FFFFFF 0%, #20C7FF 100%);
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0px 5px 9px rgba(0, 0, 0, 0.57);
+      }
   }
   
       

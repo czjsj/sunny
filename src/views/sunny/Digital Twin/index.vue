@@ -90,8 +90,13 @@
       @resolve="handleFaultResolve"
     />
     <transition name="fade">
-      <div v-if="showAIModal" class="tech-modal ai-modal">
-        <div class="modal-title">AI 全局智能分析</div>
+      <div
+        v-if="showAIModal"
+        class="tech-modal ai-modal"
+      >
+        <div class="modal-title">
+          AI 全局智能分析
+        </div>
         <div class="modal-content">
           <div class="data-row">
             <span>系统健康度：</span>
@@ -101,14 +106,24 @@
             <span>优化建议：</span>
             <span class="text-content">{{ aiData.suggestion || '正在分析中...' }}</span>
           </div>
-           </div>
-        <div class="close-btn" @click="showAIModal = false">×</div>
+        </div>
+        <div
+          class="close-btn"
+          @click="showAIModal = false"
+        >
+          ×
+        </div>
       </div>
     </transition>
 
     <transition name="fade">
-      <div v-if="showPowerModal" class="tech-modal power-modal">
-        <div class="modal-title">发电量智能预测</div>
+      <div
+        v-if="showPowerModal"
+        class="tech-modal power-modal"
+      >
+        <div class="modal-title">
+          发电量智能预测
+        </div>
         <div class="modal-content">
           <div class="data-row">
             <span>未来1小时预测：</span>
@@ -118,12 +133,17 @@
             <span>全天预计产能：</span>
             <span class="highlight-green">{{ powerData.todayTotal || 0 }} kWh</span>
           </div>
-           <div class="data-row">
+          <div class="data-row">
             <span>预测准确率：</span>
             <span>{{ powerData.accuracy || '--' }}%</span>
           </div>
         </div>
-        <div class="close-btn" @click="showPowerModal = false">×</div>
+        <div
+          class="close-btn"
+          @click="showPowerModal = false"
+        >
+          ×
+        </div>
       </div>
     </transition><!-- 实时监控视频 -->
     <video
@@ -861,10 +881,15 @@ export default {//导入外部组件
     createStats: function() {
       stats = new Stats();
       
-      // 添加多个性能面板
+      // 只显示FPS面板
       stats.showPanel(0); // FPS面板
-      const memoryPanel = stats.addPanel(new Stats.Panel('Memory', '#ff8', '#221'));
-      const drawCallsPanel = stats.addPanel(new Stats.Panel('Draw Calls', '#0ff', '#121'));
+      
+      // 设置位置到左上角并应用赛博朋克样式
+      stats.dom.style.position = 'fixed';
+      stats.dom.style.top = '10px';
+      stats.dom.style.left = '10px';
+      stats.dom.style.zIndex = '10000';
+      stats.dom.className = 'stats'; // 添加样式类
       
       // 自定义性能监控数据
       this.performanceData = {
@@ -3726,6 +3751,163 @@ addWindTurbineModel() {
 <style lang="scss" scoped>
 @import './styles/animate.css';
 @import './styles/card.scss';
+
+/* ================== 【新增】全局设计令牌系统 ================== */
+:root {
+  /* 颜色系统 */
+  --tech-primary: #00f0ff;                    /* 主要强调色 - 青色 */
+  --tech-secondary: #aecbe8;                  /* 次要文本色 - 浅蓝 */
+  --tech-warning: #ffcc00;                    /* 警告色 - 黄色 */
+  --tech-success: #00ff99;                    /* 成功色 - 绿色 */
+  --tech-text-primary: #ffffff;               /* 主要文本色 - 白色 */
+  --tech-text-secondary: #aecbe8;             /* 次要文本色 - 浅蓝 */
+  
+  /* 玻璃态效果 */
+  --tech-glass-bg: rgba(8, 16, 30, 0.35);    /* 深蓝玻璃背景 - 35%透明度 */
+  --tech-glass-border: rgba(0, 240, 255, 0.35); /* 半透明青色边框 - 35%透明度 */
+  --tech-glass-blur: blur(10px);              /* 背景模糊效果 */
+  
+  /* 发光效果 */
+  --tech-border-glow: 0 0 20px rgba(0, 240, 255, 0.4); /* 边框发光 */
+  --tech-text-glow: 0 0 10px rgba(0, 240, 255, 0.8);   /* 文字发光 */
+  
+  /* 几何形状 - 使用clip-path创建未来感造型 */
+  /* 切角矩形：从左上角开始，顺时针绘制，右上角和左下角各切掉15px的角 */
+  --tech-clip-corner: polygon(0 0, calc(100% - 15px) 0, 100% 15px, 100% 100%, 15px 100%, 0 calc(100% - 15px));
+  /* 倒梯形：上边缘从10%到90%，下边缘完整，创造导航栏的未来感造型 */
+  --tech-clip-trapezoid: polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%);
+  /* 平行四边形：左边缘向右倾斜15%，右边缘向左倾斜15%，用于按钮的3D效果 */
+  --tech-clip-parallelogram: polygon(15% 0%, 100% 0%, 85% 100%, 0% 100%);
+  
+  /* 浏览器兼容性回退值 */
+  --tech-primary-fallback: #00ccff;
+  --tech-glass-bg-fallback: rgba(20, 40, 60, 0.35);
+  --tech-border-radius-fallback: 4px;
+}
+
+/* ================== 【新增】科技面板通用样式类 ================== */
+/* 为所有数据面板提供统一的赛博朋克风格 */
+::v-deep .tech-panel {
+  background: var(--tech-glass-bg, var(--tech-glass-bg-fallback));
+  backdrop-filter: var(--tech-glass-blur);
+  -webkit-backdrop-filter: var(--tech-glass-blur); /* Safari兼容 */
+  border: 1px solid var(--tech-glass-border, var(--tech-primary-fallback));
+  clip-path: var(--tech-clip-corner);
+  box-shadow: var(--tech-border-glow);
+  position: relative;
+  
+  /* 浏览器兼容性回退 */
+  @supports not (backdrop-filter: blur(10px)) {
+    background: var(--tech-glass-bg-fallback);
+  }
+  
+  @supports not (clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%)) {
+    border-radius: var(--tech-border-radius-fallback);
+  }
+}
+
+/* L型装饰角 - 左上角 */
+::v-deep .tech-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--tech-primary, var(--tech-primary-fallback));
+  border-right: none;
+  border-bottom: none;
+  z-index: 1;
+}
+
+/* L型装饰角 - 右下角 */
+::v-deep .tech-panel::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--tech-primary, var(--tech-primary-fallback));
+  border-left: none;
+  border-top: none;
+  z-index: 1;
+}
+
+/* ================== 【新增】科技按钮样式类 ================== */
+/* 全息触摸键风格的按钮 */
+::v-deep .tech-button {
+  background: transparent;
+  border: 1px solid var(--tech-primary, var(--tech-primary-fallback));
+  color: var(--tech-text-primary, #ffffff);
+  clip-path: var(--tech-clip-parallelogram);
+  /* skewX(-15deg): 沿X轴向左倾斜15度，创造3D平行四边形效果 */
+  transform: skewX(-15deg);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  padding: 8px 16px;
+  cursor: pointer;
+  
+  /* 浏览器兼容性回退 */
+  @supports not (clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%)) {
+    border-radius: var(--tech-border-radius-fallback);
+    transform: none;
+  }
+}
+
+/* 按钮内文字反向倾斜保持正立 */
+::v-deep .tech-button span {
+  /* skewX(15deg): 反向倾斜15度，抵消父元素的倾斜，保持文字水平显示 */
+  transform: skewX(15deg);
+  display: block;
+  
+  @supports not (clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%)) {
+    transform: none;
+  }
+}
+
+/* 按钮悬停和激活状态 */
+::v-deep .tech-button:hover,
+::v-deep .tech-button:active {
+  background: rgba(0, 240, 255, 0.35);
+  color: var(--tech-primary, var(--tech-primary-fallback));
+  box-shadow: var(--tech-border-glow);
+}
+
+/* ================== 【新增】数字显示样式类 ================== */
+/* 等宽字体数字显示，适用于统计数据 */
+::v-deep .tech-number {
+  font-family: 'Courier New', 'Consolas', monospace;
+  font-weight: bold;
+  font-size: 20px;
+  letter-spacing: 1px;
+}
+
+::v-deep .tech-number.warning {
+  color: var(--tech-warning, #ffcc00);
+}
+
+::v-deep .tech-number.success {
+  color: var(--tech-success, #00ff99);
+}
+
+::v-deep .tech-number.primary {
+  color: var(--tech-primary, var(--tech-primary-fallback));
+}
+
+/* ================== 【新增】列表项样式类 ================== */
+/* 数据行的视觉分离效果 */
+::v-deep .tech-list-item {
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+  padding: 8px 0;
+  transition: background-color 0.2s ease;
+}
+
+::v-deep .tech-list-item:nth-child(even) {
+  background: rgba(0, 240, 255, 0.05);
+}
+
 // 整屏撑满
 .full-content {
   position: absolute;
@@ -3850,7 +4032,7 @@ addWindTurbineModel() {
   transform: translateX(-50%);
   width: 400px;
   min-height: 200px;
-  background: rgba(12, 28, 56, 0.9); // 深蓝半透明背景
+  background: rgba(12, 28, 56, 0.35); // 深蓝半透明背景 - 35%透明度
   border: 1px solid #00e6ff;         // 亮蓝边框
   box-shadow: 0 0 20px rgba(0, 230, 255, 0.4);
   z-index: 2000;
@@ -3903,6 +4085,27 @@ addWindTurbineModel() {
     &:hover {
       color: #fff;
     }
+  }
+}
+
+/* ================== 【新增】性能监控面板样式 ================== */
+/* 为FPS监控面板添加赛博朋克风格 */
+::v-deep .stats {
+  background: var(--tech-glass-bg, rgba(8, 16, 30, 0.35)) !important;
+  backdrop-filter: var(--tech-glass-blur, blur(10px));
+  -webkit-backdrop-filter: var(--tech-glass-blur, blur(10px));
+  border: 1px solid var(--tech-primary, #00f0ff) !important;
+  border-radius: 4px !important;
+  box-shadow: var(--tech-border-glow, 0 0 20px rgba(0, 240, 255, 0.4));
+  
+  /* FPS文字样式 */
+  canvas {
+    background: transparent !important;
+  }
+  
+  /* 浏览器兼容性回退 */
+  @supports not (backdrop-filter: blur(10px)) {
+    background: rgba(8, 16, 30, 0.35) !important;
   }
 }
 

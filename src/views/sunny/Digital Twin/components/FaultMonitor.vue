@@ -1,43 +1,88 @@
 <template>
   <transition name="fade">
-    <div v-if="visible" class="fault-modal-overlay">
+    <div
+      v-if="visible"
+      class="fault-modal-overlay"
+    >
       <div class="fault-card">
         <div class="card-header">
           <h3>⚠️ 风机异常提醒 - 机组 #{{ turbineId }}</h3>
-          <span class="close-btn" @click="closeModal">×</span>
+          <span
+            class="close-btn"
+            @click="closeModal"
+          >×</span>
         </div>
 
         <div class="card-body">
-          <div class="model-preview" id="mini-turbine-container"></div>
+          <div
+            id="mini-turbine-container"
+            class="model-preview"
+          />
           
           <div class="fault-info">
             <div class="switch-tabs">
-              <div v-if="isVoltageFault" class="tab-active">电压跌落分析</div>
-              <div v-else class="tab-active">常规部件状态</div>
+              <div
+                v-if="isVoltageFault"
+                class="tab-active"
+              >
+                电压跌落分析
+              </div>
+              <div
+                v-else
+                class="tab-active"
+              >
+                常规部件状态
+              </div>
             </div>
             
             <div class="info-content">
               <p>故障代码: <span class="highlight">{{ faultId }}</span></p>
-              <p class="desc-box">故障描述: <span class="highlight">{{ faultDescription }}</span></p>
+              <p class="desc-box">
+                故障描述: <span class="highlight">{{ faultDescription }}</span>
+              </p>
               
-              <div v-if="isVoltageFault" class="chart-box">
-                <div id="ui-chart" style="width: 100%; height: 260px;"></div>
+              <div
+                v-if="isVoltageFault"
+                class="chart-box"
+              >
+                <div
+                  id="ui-chart"
+                  style="width: 100%; height: 260px;"
+                />
               </div>
               
-              <div v-else class="normal-box">
+              <div
+                v-else
+                class="normal-box"
+              >
                 <div class="status-item">
                   <span class="label">齿轮箱振动</span>
-                  <div class="progress-bar"><div class="fill danger" style="width: 95%"></div></div>
+                  <div class="progress-bar">
+                    <div
+                      class="fill danger"
+                      style="width: 95%"
+                    />
+                  </div>
                   <span class="value danger">0.8g (超限)</span>
                 </div>
                 <div class="status-item">
                   <span class="label">发电机温度</span>
-                  <div class="progress-bar"><div class="fill warning" style="width: 70%"></div></div>
+                  <div class="progress-bar">
+                    <div
+                      class="fill warning"
+                      style="width: 70%"
+                    />
+                  </div>
                   <span class="value warning">85°C</span>
                 </div>
                 <div class="status-item">
                   <span class="label">偏航误差</span>
-                  <div class="progress-bar"><div class="fill normal" style="width: 10%"></div></div>
+                  <div class="progress-bar">
+                    <div
+                      class="fill normal"
+                      style="width: 10%"
+                    />
+                  </div>
                   <span class="value normal">2°</span>
                 </div>
               </div>
@@ -45,13 +90,29 @@
           </div>
         </div>
 
-        <div class="suggestion-panel" :class="{ 'panel-open': showAdvice }">
-          <div class="panel-handle" @click="showAdvice = !showAdvice">
+        <div
+          class="suggestion-panel"
+          :class="{ 'panel-open': showAdvice }"
+        >
+          <div
+            class="panel-handle"
+            @click="showAdvice = !showAdvice"
+          >
             <span>{{ showAdvice ? '▼ 收起建议' : '▲ 查看 AI 处理建议 (AnythingLLM)' }}</span>
           </div>
-          <div class="ai-content" v-if="showAdvice">
-            <div class="typing-effect">{{ aiAdviceText }}</div>
-            <button class="solve-btn" @click="resolveFault">故障已解决</button>
+          <div
+            v-if="showAdvice"
+            class="ai-content"
+          >
+            <div class="typing-effect">
+              {{ aiAdviceText }}
+            </div>
+            <button
+              class="solve-btn"
+              @click="resolveFault"
+            >
+              故障已解决
+            </button>
           </div>
         </div>
       </div>

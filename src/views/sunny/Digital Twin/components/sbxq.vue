@@ -17,20 +17,39 @@
       
       <div class="s-content">
         <div class="s-c-item">
-          <div class="s-c-i-label"><span>设备名称</span></div>
-          <div class="s-c-i-value" style="color: #FF4747">{{ currentDevice.name }}</div>
+          <div class="s-c-i-label">
+            <span>设备名称</span>
+          </div>
+          <div
+            class="s-c-i-value"
+            style="color: #FF4747"
+          >
+            {{ currentDevice.name }}
+          </div>
         </div>
         <div class="s-c-item">
-          <div class="s-c-i-label"><span>生产厂家</span></div>
-          <div class="s-c-i-value">{{ currentDevice.factory }}</div>
+          <div class="s-c-i-label">
+            <span>生产厂家</span>
+          </div>
+          <div class="s-c-i-value">
+            {{ currentDevice.factory }}
+          </div>
         </div>
         <div class="s-c-item">
-          <div class="s-c-i-label"><span>规格型号</span></div>
-          <div class="s-c-i-value">{{ currentDevice.model }}</div>
+          <div class="s-c-i-label">
+            <span>规格型号</span>
+          </div>
+          <div class="s-c-i-value">
+            {{ currentDevice.model }}
+          </div>
         </div>
         <div class="s-c-item">
-          <div class="s-c-i-label"><span>投运时间</span></div>
-          <div class="s-c-i-value">{{ currentDevice.date }}</div>
+          <div class="s-c-i-label">
+            <span>投运时间</span>
+          </div>
+          <div class="s-c-i-value">
+            {{ currentDevice.date }}
+          </div>
         </div>
       </div>
 
@@ -49,32 +68,59 @@
         <div class="s-l-text">
           AI 智能检修建议
         </div>
-        <div class="ai-tag">AI Generated</div>
+        <div class="ai-tag">
+          AI Generated
+        </div>
       </div>
       <div class="s-content text-area ai-box">
-        <div v-if="aiLoading" class="loading-text">正在分析设备遥测数据...</div>
-        <div v-else style="white-space: pre-wrap;">{{ currentDevice.aiSuggestion }}</div>
+        <div
+          v-if="aiLoading"
+          class="loading-text"
+        >
+          正在分析设备遥测数据...
+        </div>
+        <div
+          v-else
+          style="white-space: pre-wrap;"
+        >
+          {{ currentDevice.aiSuggestion }}
+        </div>
       </div>
 
       <div class="bottom-ctrl-area">
         <div class="s-label-mini">
           <div class="s-l-flag" />
-          <div class="s-l-text">人员维护</div>
+          <div class="s-l-text">
+            人员维护
+          </div>
         </div>
         
         <div class="ctrl-row">
           <div class="maintain-btns">
-            <div class="btn">系统匹配</div>
-            <div class="btn">人工指派</div>
+            <div class="btn">
+              系统匹配
+            </div>
+            <div class="btn">
+              人工指派
+            </div>
           </div>
           
           <div class="switch-btns">
-            <div class="s-btn" @click="switchDevice(-1)">&lt; 上一台</div>
-            <div class="s-btn" @click="switchDevice(1)">下一台 &gt;</div>
+            <div
+              class="s-btn"
+              @click="switchDevice(-1)"
+            >
+              &lt; 上一台
+            </div>
+            <div
+              class="s-btn"
+              @click="switchDevice(1)"
+            >
+              下一台 &gt;
+            </div>
           </div>
         </div>
       </div>
-
     </div>
   </div>
 </template>
