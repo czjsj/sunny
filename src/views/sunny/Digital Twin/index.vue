@@ -845,29 +845,76 @@ export default {//导入外部组件
     
     // 视角位置配置 - 集中管理所有视角参数，方便精细调整
     getViewPositions() {
+      // ========================================================================
+      // === 📷 相机视角配置区域 START ===
+      // === 提示：在此处修改相机高度和观察角度 ===
+      // ========================================================================
+      
+      // 🎯 风机视角配置（相对偏移量）
+      // 说明：这些值会加到风机的实际位置上，形成最终的相机位置和观察目标
+      const TURBINE_VIEW = {
+        // 相机位置偏移（相对于风机位置）
+        camera: { 
+          x: -130,  // 相机在风机左侧（负值=左，正值=右）
+          y: 310,   // 🔧 相机高度（增加此值可获得更高的俯视角度）
+          z: 30     // 相机在风机前方（正值=前，负值=后）
+        },
+        // 观察目标偏移（相对于风机位置）
+        target: { 
+          x: 0,     // 目标点水平居中
+          y: 150,   // 🔧 观察高度（增加此值可看向风机更高处，如机舱或叶片）
+          z: 0      // 目标点深度居中
+        }
+      };
+      
+      // 🌞 右侧光伏板视角配置（绝对坐标）
+      const RIGHT_SOLAR_PANEL_VIEW = {
+        camera: { x: -120, y: 50, z: -140 },
+        target: { x: -120, y: 0, z: -190 }
+      };
+      
+      // 🌞 左侧光伏板视角配置（绝对坐标）
+      const LEFT_SOLAR_PANEL_VIEW = {
+        camera: { x: 50, y: 50, z: 380 },
+        target: { x: 50, y: 0, z: 330 }
+      };
+      
+      // ========================================================================
+      // === 📷 相机视角配置区域 END ===
+      // ========================================================================
+      
       // 获取默认相机配置作为回归视角
       var defaultCameraConfig = this.getDefaultCameraConfig();
       
+      // 返回配置对象（保持原有结构，便于代码其他部分使用）
       return {
         // 风机视角配置 - 每个风机使用相对偏移量
         windTurbine: {
-          cameraOffset: { x: -130, y: 200, z: 30 }, // 相机相对于风机的偏移量
-          targetOffset: { x: 0, y: 0, z: 0 }     // 目标点相对于风机的偏移量
+          cameraOffset: TURBINE_VIEW.camera,
+          targetOffset: TURBINE_VIEW.target
         },
         // 右侧光伏板视角配置
         rightSolarPanel: {
-          cameraPosition: { x: -120, y: 50, z: -140 },
-          targetPosition: { x: -120, y: 0, z: -190 }
+          cameraPosition: RIGHT_SOLAR_PANEL_VIEW.camera,
+          targetPosition: RIGHT_SOLAR_PANEL_VIEW.target
         },
         // 左侧光伏板视角配置
         leftSolarPanel: {
-          cameraPosition: { x: 50, y: 50, z: 380 },
-          targetPosition: { x: 50, y: 0, z: 330 }
+          cameraPosition: LEFT_SOLAR_PANEL_VIEW.camera,
+          targetPosition: LEFT_SOLAR_PANEL_VIEW.target
         },
         // 默认视角配置 - 与默认相机配置保持一致
         default: {
-          cameraPosition: { x: defaultCameraConfig.position.x, y: defaultCameraConfig.position.y, z: defaultCameraConfig.position.z },
-          targetPosition: { x: defaultCameraConfig.target.x, y: defaultCameraConfig.target.y, z: defaultCameraConfig.target.z }
+          cameraPosition: { 
+            x: defaultCameraConfig.position.x, 
+            y: defaultCameraConfig.position.y, 
+            z: defaultCameraConfig.position.z 
+          },
+          targetPosition: { 
+            x: defaultCameraConfig.target.x, 
+            y: defaultCameraConfig.target.y, 
+            z: defaultCameraConfig.target.z 
+          }
         }
       };
     },
@@ -1213,6 +1260,37 @@ export default {//导入外部组件
         // 如果已经找到目标就不再处理
         if (isFind) return; 
 
+        // === 【新增】优先判断：点击精灵标签 ===
+        if (item.object.isLabel && item.object.bindTarget) {
+          isFind = true;
+          let targetModel = item.object.bindTarget;
+          
+          // 添加呼吸灯效果
+          this.modelAddBLN(targetModel);
+          
+          // 使用统一的风机视角配置
+          const viewPositions = this.getViewPositions();
+          let targetOffset = viewPositions.windTurbine.targetOffset;
+          let cameraOffset = viewPositions.windTurbine.cameraOffset;
+
+          this.moveCamera(
+            camera.position,
+            controls.target,
+            {
+              x: targetModel.position.x + cameraOffset.x,
+              y: targetModel.position.y + cameraOffset.y,
+              z: targetModel.position.z + cameraOffset.z
+            },
+            {
+              x: targetModel.position.x + targetOffset.x,
+              y: targetModel.position.y + targetOffset.y,
+              z: targetModel.position.z + targetOffset.z
+            },
+            () => {}
+          );
+          return;
+        }
+
         // --- 新增逻辑：如果点击的是地面，且当前有设备被选中（detailShow为true），则执行退出 ---
         if (item.object.name && groundNames.includes(item.object.name) || 
            (item.object.parent && groundNames.includes(item.object.parent.name))) {
@@ -1268,52 +1346,23 @@ export default {//导入外部组件
                 let clickedWindTurbine = null;
                 let currentObj = item.object;
                 
-                // 向上查找风机对象
+                // 向上查找风机对象（统一命名为 windTurbine_）
                 while (currentObj && !clickedWindTurbine) {
-                  if (currentObj.name && (currentObj.name.indexOf('windTurbine_') === 0 || currentObj.name.indexOf('windTurbineNoAnimation_') === 0)) {
+                  if (currentObj.name && currentObj.name.indexOf('windTurbine_') === 0) {
                     clickedWindTurbine = currentObj;
                   }
                   currentObj = currentObj.parent;
                 }
                 
                 // 兜底查找
-                 if (!clickedWindTurbine && item.object.parent && (item.object.parent.name.indexOf('windTurbine_') === 0 || item.object.parent.name.indexOf('windTurbineNoAnimation_') === 0)) {
+                 if (!clickedWindTurbine && item.object.parent && item.object.parent.name.indexOf('windTurbine_') === 0) {
                     clickedWindTurbine = item.object.parent;
                  }
 
                 if (clickedWindTurbine) {
                   this.modelAddBLN(clickedWindTurbine);
                   
-                  // =============================================
-                  // 【核心修改】：无动画风机点击逻辑
-                  // =============================================
-                  if (clickedWindTurbine.name.indexOf('windTurbineNoAnimation_') === 0) {
-                      // 1. 获取基准高度 (风机高度)
-                      let baseY = clickedWindTurbine.position.y;
-                      
-                      // 2. 确定摄像机位置 (直接复用调试好的精灵位置)
-                      let camX = 350;
-                      let camY = baseY + 85;
-                      let camZ = -400;
-
-                      // 3. 执行移动
-                      this.moveCamera(
-                        camera.position,
-                        controls.target,
-                        // 相机位置：直接移动到设定的精灵位置
-                        { x: camX, y: camY, z: camZ },   
-                        
-                        // 目标位置：基于相机位置，各轴减去 20
-                        { x: camX +17, y: camY -20, z: camZ  },  
-                        
-                        () => {}
-                      );
-                      return; // 结束，不执行后续逻辑
-                  }
-
-                  // =============================================
-                  // 下面是普通有动画风机的通用逻辑 (保持不变)
-                  // =============================================
+                  // 使用统一的风机视角配置
                   const viewPositions = this.getViewPositions();
                   let targetOffset = viewPositions.windTurbine.targetOffset;
                   let cameraOffset = viewPositions.windTurbine.cameraOffset;
@@ -1322,13 +1371,13 @@ export default {//导入外部组件
                     camera.position,
                     controls.target,
                     {
-                      x: clickedWindTurbine.position.x + cameraOffset.x,
-                      y: clickedWindTurbine.position.y + cameraOffset.y,
+                      x: clickedWindTurbine.position.x + cameraOffset.x+100,
+                      y: clickedWindTurbine.position.y + cameraOffset.y+100,
                       z: clickedWindTurbine.position.z + cameraOffset.z
                     },
                     {
-                      x: clickedWindTurbine.position.x + targetOffset.x,
-                      y: clickedWindTurbine.position.y + targetOffset.y,
+                      x: clickedWindTurbine.position.x + targetOffset.x+100,
+                      y: clickedWindTurbine.position.y + targetOffset.y+100,
                       z: clickedWindTurbine.position.z + targetOffset.z
                     },
                     () => {}
@@ -1398,12 +1447,12 @@ export default {//导入外部组件
         // 1. 获取变压器
         let transformer = byqList[1];
         
-        // 2. 获取无动画风机
+        // 2. 获取第一个风机（统一命名为 windTurbine_1）
         let windTurbineGroup = scene.getObjectByName("windTurbineGroup");
-        let noAniWind = null;
+        let turbine = null;
         
         if (windTurbineGroup) {
-          noAniWind = windTurbineGroup.getObjectByName("windTurbineNoAnimation_1");
+          turbine = windTurbineGroup.getObjectByName("windTurbine_1");
         }
 
         // 3. 构建高亮列表
@@ -1415,8 +1464,8 @@ export default {//导入外部组件
         // 加入风机
         // 【核心修复】：只添加最外层的 Group 对象即可，千万不要 traverse 添加子节点！
         // OutlinePass 会自动递归处理子节点。重复添加会导致渲染冲突使模型消失。
-        if (noAniWind) {
-           targets.push(noAniWind);
+        if (turbine) {
+           targets.push(turbine);
         }
 
         // 4. 应用呼吸灯效果
@@ -1431,7 +1480,7 @@ export default {//导入外部组件
     },
 
 
-    // 切换告警设备详情视角 (0:变压器 <-> 1:无动画风机)
+    // 切换告警设备详情视角 (0:变压器 <-> 1:风机)
     switchEquipmentDetail(index) {
       // ==================================================
       // 情况 1: 切换到 [变压器]
@@ -1451,21 +1500,38 @@ export default {//导入外部组件
       }
 
       // ==================================================
-      // 情况 2: 切换到 [无动画风机]
+      // 情况 2: 切换到 [风机] - 使用统一的 windTurbine_1
       // ==================================================
       else if (index === 1) {
-        // 这里的坐标是之前调好的风机特写坐标 (camX=350 那一组)
-        let camX = 320;
-        let camY = 190; // 风机高度70 + 85
-        let camZ = -400;
+        let windTurbineGroup = scene.getObjectByName("windTurbineGroup");
+        let turbine = null;
+        
+        if (windTurbineGroup) {
+          turbine = windTurbineGroup.getObjectByName("windTurbine_1");
+        }
+        
+        if (turbine) {
+          // 使用统一的风机视角配置
+          const viewPositions = this.getViewPositions();
+          let targetOffset = viewPositions.windTurbine.targetOffset;
+          let cameraOffset = viewPositions.windTurbine.cameraOffset;
 
-        this.moveCamera(
-          camera.position,
-          controls.target,
-          { x: camX, y: camY, z: camZ },          // 相机位置
-          { x: camX + 17, y: camY - 20, z: camZ }, // 目标位置
-          () => {}
-        );
+          this.moveCamera(
+            camera.position,
+            controls.target,
+            {
+              x: turbine.position.x + cameraOffset.x,
+              y: turbine.position.y + cameraOffset.y,
+              z: turbine.position.z + cameraOffset.z
+            },
+            {
+              x: turbine.position.x + targetOffset.x,
+              y: turbine.position.y + targetOffset.y,
+              z: turbine.position.z + targetOffset.z
+            },
+            () => {}
+          );
+        }
       }
     },
     
@@ -1567,33 +1633,32 @@ export default {//导入外部组件
       });
 
       // ==========================================
-      // 第五阶段：无动画风机 (平移到达 -> 暂停 -> 回家)
+      // 第五阶段：最后一个风机（8号风机）巡检
       // ==========================================
       
-      // 无动画风机真实坐标: x: -190, y: 70, z: -450, 实际上x轴的位置是有偏移的，对于有动画风机，这个位置是230
+      // 8号风机坐标: x: 330, y: 60, z: -380
       
-      // 1. 平稳移动到达无动画风机位置
+      // 1. 平稳移动到达8号风机位置
       roamTweenEndCarm.push({
           x1: 150,   // 保持在 x=150 的航线上
-          y1: 270,   // 高度保持 200 (与之前风机一致，视野更好)
-          z1: -400,  // 摄像机停在风机侧前方 (风机z: -450, 偏移+50 = -400)
+          y1: 270,   // 高度保持 270
+          z1: -330,  // 摄像机停在风机侧前方
           
-          x2: 230,  // 【修正】观察点 X 锁死无动画风机
-          y2: 190,    // 【修正】观察点 Y
-          z2: -400,  // 【修正】观察点 Z
+          x2: 330,   // 观察点 X 锁定8号风机
+          y2: 60,    // 观察点 Y
+          z2: -380,  // 观察点 Z
           time: 6000 // 慢慢飞过去
       });
 
-      // 2. 【暂停】原地不动 2秒
-      // 关键：这里的坐标必须和上面一段的结束坐标完全一致
+      // 2. 【暂停】原地不动 1.4秒
       roamTweenEndCarm.push({
           x1: 150,   
           y1: 270,   
-          z1: -400,  
+          z1: -330,  
           
-          x2: 230,  
-          y2: 190, 
-          z2: -400, 
+          x2: 330,  
+          y2: 60, 
+          z2: -380, 
           time: 1400 // 悬停 1.4秒
       });
       // ==========================================
@@ -3282,41 +3347,34 @@ addWindTurbineModel() {
   ];
 
   gloader.load(`/sunny-substation/models/风机10.glb`, gltf => {
-    
-    // 清空旧数据 (防止热更新堆叠)
+    // 清空旧数据
     windTurbineDataList = [];
 
     positions.forEach((pos, i) => {
       let model = gltf.scene.clone();
       let index = i + 1;
-      
-      // ============================================
-      // ============================================
-      model.scale.set(200, 200, 200); 
-      
+
+      model.scale.set(200, 200, 200);
       model.position.set(pos.x, pos.y, pos.z);
       model.rotation.y = pos.rotationY;
       model.name = `windTurbine_${index}`;
 
-      // 扇叶位于父组件转轴"Rotor"下，所以直接旋转rotor即可
+      // 获取扇叶
       let rotor = model.getObjectByName("Rotor");
-      
-      // 将数据存入全局变量 (非 data)
+
+      // 存入数据列表
       windTurbineDataList.push({
         id: index,
         mesh: model,
         rotor: rotor,
-        //风机初始速度设定
-        speed: 0,// + Math.random() * 0.01, // 稍微快一点以便观察
+        speed: 0, // 等待后端推送
         isRunning: true
       });
 
+      // 添加到组
       windTurbineGroup.add(model);
-      
-      // 更新全局查找数组 
-      windTurbineClones.push(model);
 
-      // 精灵标签 (保持不变)
+      // === 关键点：为每个风机添加精灵标签，并绑定数据以便点击 ===
       this.createDeviceIndicator({
           img: '/sunny-substation/images/tk-blue.png',
           width: 320,
@@ -3327,13 +3385,16 @@ addWindTurbineModel() {
           txtPaddingY: 58
       }).then((panelMate) => {
         let panelMesh = new THREE.Sprite(panelMate);
-        // 标签高度比风机高150
-        panelMesh.position.set(pos.x, pos.y + 150, pos.z-20); 
+        panelMesh.position.set(pos.x, pos.y + 150, pos.z - 20); 
         panelMesh.scale.set(150, 100, 1);
+
+        // 绑定模型数据，为了下一步点击精灵能找到对应的模型
+        panelMesh.isLabel = true;
+        panelMesh.bindTarget = model; 
+
         scene.add(panelMesh);
       });
     });
-    
     scene.add(windTurbineGroup);
   });
 },
