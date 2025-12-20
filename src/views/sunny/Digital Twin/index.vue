@@ -90,62 +90,84 @@
       @resolve="handleFaultResolve"
     />
     <transition name="fade">
-      <div
-        v-if="showAIModal"
-        class="tech-modal ai-modal"
-      >
-        <div class="modal-title">
-          AI 全局智能分析
-        </div>
-        <div class="modal-content">
-          <div class="data-row">
-            <span>系统健康度：</span>
-            <span class="highlight">{{ aiData.healthScore || '--' }}</span>
-          </div>
-          <div class="data-row">
-            <span>优化建议：</span>
-            <span class="text-content">{{ aiData.suggestion || '正在分析中...' }}</span>
-          </div>
-        </div>
-        <div
-          class="close-btn"
-          @click="showAIModal = false"
-        >
-          ×
+      <div v-if="showAIModal" class="tech-modal-overlay">
+        <div class="tech-modal-box">
+          <dv-border-box-11 title="AI 全局智能分析" :title-width="200">
+            <div class="modal-inner-content">
+              <div class="close-btn" @click="showAIModal = false">
+                <i class="el-icon-close"></i>
+              </div>
+              
+              <div class="tech-content-body">
+                <div class="score-panel">
+                  <div class="label">系统健康评分</div>
+                  <div class="score-value highlight-cyan">{{ aiData.healthScore || '98.5' }}</div>
+                </div>
+                
+                <div class="info-panel">
+                  <div class="info-item">
+                    <span class="label-icon"></span>
+                    <span class="label-text">核心算法模型：</span>
+                    <span class="value-text">Transformer-V2</span>
+                  </div>
+                  <div class="info-item">
+                    <span class="label-icon"></span>
+                    <span class="label-text">实时算力负载：</span>
+                    <span class="value-text">42%</span>
+                  </div>
+                  
+                  <div class="suggestion-box">
+                    <div class="sub-title">AI 优化建议</div>
+                    <p class="suggestion-text">
+                      {{ aiData.suggestion || '系统运行平稳，各节点数据正常。建议在晚间低峰期进行例行巡检。' }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </dv-border-box-11>
         </div>
       </div>
     </transition>
-
     <transition name="fade">
-      <div
-        v-if="showPowerModal"
-        class="tech-modal power-modal"
-      >
-        <div class="modal-title">
-          发电量智能预测
-        </div>
-        <div class="modal-content">
-          <div class="data-row">
-            <span>未来1小时预测：</span>
-            <span class="highlight-green">{{ powerData.nextHour || 0 }} kWh</span>
-          </div>
-          <div class="data-row">
-            <span>全天预计产能：</span>
-            <span class="highlight-green">{{ powerData.todayTotal || 0 }} kWh</span>
-          </div>
-          <div class="data-row">
-            <span>预测准确率：</span>
-            <span>{{ powerData.accuracy || '--' }}%</span>
-          </div>
-        </div>
-        <div
-          class="close-btn"
-          @click="showPowerModal = false"
-        >
-          ×
+      <div v-if="showPowerModal" class="tech-modal-overlay">
+        <div class="tech-modal-box">
+          <dv-border-box-11 title="发电量智能预测" :title-width="200">
+            <div class="modal-inner-content">
+              <div class="close-btn" @click="showPowerModal = false">
+                <i class="el-icon-close"></i>
+              </div>
+              
+              <div class="tech-content-body flex-row">
+                <div class="data-card">
+                  <div class="card-icon"><i class="el-icon-odometer"></i></div>
+                  <div class="card-title">未来1小时预测</div>
+                  <div class="card-value highlight-green">{{ powerData.nextHour || 1200 }} <span class="unit">kWh</span></div>
+                  <div class="card-trend">环比上升 5.2% ↑</div>
+                </div>
+                
+                <div class="data-card main-card">
+                  <div class="card-icon"><i class="el-icon-cpu"></i></div>
+                  <div class="card-title">全天预计产能</div>
+                  <div class="card-value highlight-gold">{{ powerData.todayTotal || 25000 }} <span class="unit">kWh</span></div>
+                  <div class="progress-bar">
+                    <div class="progress-inner" style="width: 78%"></div>
+                  </div>
+                </div>
+                
+                <div class="data-card">
+                  <div class="card-icon"><i class="el-icon-aim"></i></div>
+                  <div class="card-title">模型准确率</div>
+                  <div class="card-value highlight-cyan">{{ powerData.accuracy || 99.2 }} <span class="unit">%</span></div>
+                  <div class="card-trend">持续校准中...</div>
+                </div>
+              </div>
+            </div>
+          </dv-border-box-11>
         </div>
       </div>
-    </transition><!-- 实时监控视频 -->
+    </transition>
+    <!-- 实时监控视频 -->
     <video
       id="video"
       autoplay
@@ -4031,68 +4053,211 @@ addWindTurbineModel() {
   opacity: 0;
 }
 // === 【新增】科技感弹窗样式 ===
-.tech-modal {
-  position: absolute;
-  top: 20%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 400px;
-  min-height: 200px;
-  background: rgba(12, 28, 56, 0.35); // 深蓝半透明背景 - 35%透明度
-  border: 1px solid #00e6ff;         // 亮蓝边框
-  box-shadow: 0 0 20px rgba(0, 230, 255, 0.4);
-  z-index: 2000;
+.tech-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 10, 20, 0.7); /* 深色半透明遮罩 */
+  backdrop-filter: blur(4px);      /* 背景模糊，突出弹窗 */
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 2. 弹窗主体盒子：控制尺寸为屏幕的 40% 左右 */
+.tech-modal-box {
+  width: 55vw;   /* 宽度占屏幕 55% */
+  height: 55vh;  /* 高度占屏幕 55% -> 面积约为屏幕的 30%-40% 视觉感 */
+  min-width: 800px; /* 保证最小尺寸 */
+  min-height: 450px;
+  position: relative;
+  
+  /* 给 DataV 的盒子加一个深色背景底色，否则它是透明的 */
+  ::v-deep .dv-border-box-11 {
+    background: rgba(13, 27, 56, 0.85);
+    box-shadow: 0 0 40px rgba(0, 246, 255, 0.15); /* 外发光 */
+  }
+}
+
+/* 3. 内部布局容器 */
+.modal-inner-content {
+  width: 100%;
+  height: 100%;
+  padding: 60px 40px 40px 40px; /* 顶部留出空间给 DataV 的标题栏 */
+  box-sizing: border-box;
+  position: relative;
   color: #fff;
+  font-family: "Microsoft YaHei";
+}
+
+/* 4. 关闭按钮 */
+.close-btn {
+  position: absolute;
+  top: 15px;
+  right: 25px;
+  font-size: 28px;
+  color: #00f6ff;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.3s;
+  
+  &:hover {
+    color: #fff;
+    transform: rotate(90deg);
+    text-shadow: 0 0 10px #00f6ff;
+  }
+}
+
+/* 5. 内容排版通用样式 */
+.tech-content-body {
+  height: 100%;
+  display: flex;
+  
+  /* AI分析弹窗的布局 */
+  &.flex-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  /* 默认纵向布局 */
+  flex-direction: column; 
+  justify-content: center;
+}
+
+/* AI 分析页面的样式 */
+.score-panel {
+  text-align: center;
+  margin-bottom: 30px;
+  
+  .label {
+    font-size: 18px;
+    color: #aecbe8;
+    letter-spacing: 2px;
+  }
+  
+  .score-value {
+    font-size: 72px;
+    font-weight: bold;
+    font-family: 'Impact', sans-serif;
+    margin-top: 10px;
+    text-shadow: 0 0 20px rgba(0, 246, 255, 0.6);
+  }
+}
+
+.info-panel {
+  background: rgba(255, 255, 255, 0.05);
   padding: 20px;
   border-radius: 4px;
+  border: 1px solid rgba(0, 246, 255, 0.2);
   
-  .modal-title {
-    font-size: 18px;
-    font-weight: bold;
-    color: #00e6ff;
-    border-bottom: 1px solid rgba(0, 230, 255, 0.3);
-    padding-bottom: 10px;
+  .info-item {
+    display: flex;
+    align-items: center;
     margin-bottom: 15px;
-    font-family: "Microsoft YaHei";
+    font-size: 18px;
+    
+    .label-text { color: #aecbe8; margin-right: 10px; }
+    .value-text { color: #fff; font-weight: bold; }
   }
   
-  .modal-content {
-    .data-row {
-      margin-bottom: 15px;
-      font-size: 16px;
-      display: flex;
-      justify-content: space-between;
-      
-      .highlight {
-        color: #ffcc00; // 黄色高亮
-        font-weight: bold;
-        font-size: 20px;
-      }
-      .highlight-green {
-        color: #00ff99; // 绿色高亮
-        font-weight: bold;
-        font-size: 20px;
-      }
-      .text-content {
-        max-width: 60%;
-        text-align: right;
-        color: #d1d1d1;
-      }
+  .suggestion-box {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.2);
+    
+    .sub-title {
+      font-size: 14px;
+      color: #ffcc00;
+      margin-bottom: 10px;
+      font-weight: bold;
     }
-  }
-  
-  .close-btn {
-    position: absolute;
-    top: 5px;
-    right: 10px;
-    font-size: 24px;
-    cursor: pointer;
-    color: #00e6ff;
-    &:hover {
-      color: #fff;
+    .suggestion-text {
+      font-size: 16px;
+      line-height: 1.6;
+      color: #e0e0e0;
     }
   }
 }
+
+/* 发电量预测页面的样式 - 卡片式布局 */
+.data-card {
+  flex: 1;
+  height: 80%;
+  background: rgba(0, 246, 255, 0.05);
+  margin: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 246, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  transition: all 0.3s;
+  
+  &:hover {
+    background: rgba(0, 246, 255, 0.1);
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  }
+  
+  &.main-card {
+    flex: 1.2;
+    height: 90%;
+    background: rgba(0, 246, 255, 0.08);
+    border: 1px solid rgba(0, 246, 255, 0.3);
+  }
+  
+  .card-icon {
+    font-size: 40px;
+    color: #00f6ff;
+    margin-bottom: 20px;
+  }
+  
+  .card-title {
+    font-size: 16px;
+    color: #aecbe8;
+    margin-bottom: 10px;
+  }
+  
+  .card-value {
+    font-size: 36px;
+    font-weight: bold;
+    font-family: 'Arial', sans-serif;
+    
+    .unit { font-size: 16px; color: #aaa; margin-left: 5px; font-weight: normal;}
+  }
+  
+  .card-trend {
+    margin-top: 15px;
+    font-size: 14px;
+    color: #ff5252; /* 默认红 */
+  }
+}
+
+/* 进度条 */
+.progress-bar {
+  width: 80%;
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  margin-top: 20px;
+  overflow: hidden;
+  
+  .progress-inner {
+    height: 100%;
+    background: linear-gradient(90deg, #ffcc00, #ff6600);
+    box-shadow: 0 0 10px #ffcc00;
+  }
+}
+
+/* 颜色工具类 */
+.highlight-cyan { color: #00f6ff; text-shadow: 0 0 10px rgba(0, 246, 255, 0.5); }
+.highlight-green { color: #00ff99; text-shadow: 0 0 10px rgba(0, 255, 153, 0.5); }
+.highlight-gold { color: #ffcc00; text-shadow: 0 0 10px rgba(255, 204, 0, 0.5); }
 
 /* ================== 【新增】性能监控面板样式 ================== */
 /* 为FPS监控面板添加赛博朋克风格 */
